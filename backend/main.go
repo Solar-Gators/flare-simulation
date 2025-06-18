@@ -10,7 +10,7 @@ import (
 	"os"
 	"strconv"
 )
-
+//I'm gonna end it all
 type SegmentType string
 
 const (
