@@ -5,158 +5,168 @@ function App() {
   const [data, setData] = useState([]);
   const canvasRef = useRef(null);
   const animationRef = useRef(null);
-  const startTimeRef = useRef(null);
-  const positionsRef = useRef([]);
+  const startTimeRef = useRef(0);
+  const pointsRef = useRef([]);
+
+  // Build a list of { x, y, angle, time } including the first segment
+  function buildTimedPoints(data) {
+    let x = 150,
+      y = 250,
+      angle = 0;
+    const scale = 2;
+    // start at t = 0
+    const pts = [{ x, y, angle, time: 0 }];
+
+    let prevDist = 0,
+      prevTime = 0;
+
+    for (const seg of data) {
+      const d = (seg.Distance - prevDist) * scale;
+      const t1 = prevTime,
+        t2 = seg.Time;
+      prevDist = seg.Distance;
+      prevTime = seg.Time;
+
+      if (seg.SegmentType === "turn") {
+        const rawR = seg.Radius * scale;
+        const dir = rawR >= 0 ? 1 : -1;
+        const r = Math.abs(rawR);
+        const theta = d / r;
+
+        // subdivide arc: ≤1° per step or ~2px arc length
+        const steps = Math.max(
+          Math.ceil(Math.abs(theta) / (Math.PI / 180)),
+          Math.ceil(d / 2)
+        );
+
+        const cx = x - dir * r * Math.sin(angle);
+        const cy = y + dir * r * Math.cos(angle);
+
+        for (let s = 1; s <= steps; s++) {
+          const frac = s / steps;
+          const a = angle + dir * theta * frac;
+          const px = cx + dir * r * Math.sin(a);
+          const py = cy - dir * r * Math.cos(a);
+          const time = t1 + (t2 - t1) * frac;
+          pts.push({ x: px, y: py, angle: a, time });
+        }
+
+        angle += dir * theta;
+        x = pts[pts.length - 1].x;
+        y = pts[pts.length - 1].y;
+      } else {
+        // straight: ~5px per step
+        const steps = Math.max(1, Math.ceil(d / 2));
+        for (let s = 1; s <= steps; s++) {
+          const frac = s / steps;
+          const px = x + Math.cos(angle) * d * frac;
+          const py = y + Math.sin(angle) * d * frac;
+          const time = t1 + (t2 - t1) * frac;
+          pts.push({ x: px, y: py, angle, time });
+        }
+        x += Math.cos(angle) * d;
+        y += Math.sin(angle) * d;
+      }
+    }
+
+    return pts;
+  }
+
+  function drawTrack() {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const pts = pointsRef.current;
+    if (pts.length < 2) return;
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (const p of pts) ctx.lineTo(p.x, p.y);
+    ctx.strokeStyle = "#333";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  function animate(timestamp) {
+    const pts = pointsRef.current;
+    if (!pts.length) return;
+
+    const elapsed = (timestamp - startTimeRef.current) / 1000;
+    const totalTime = pts[pts.length - 1].time;
+
+    if (elapsed >= totalTime) {
+      drawTrack();
+      const last = pts[pts.length - 1];
+      const ctx = canvasRef.current.getContext("2d");
+      ctx.beginPath();
+      ctx.arc(last.x, last.y, 6, 0, 2 * Math.PI);
+      ctx.fillStyle = "red";
+      ctx.fill();
+      return;
+    }
+
+    let idx = pts.findIndex((p) => p.time > elapsed);
+    if (idx <= 0) idx = 0;
+    const p = pts[idx];
+
+    drawTrack();
+    const ctx = canvasRef.current.getContext("2d");
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 8, 0, 2 * Math.PI);
+    ctx.fillStyle = "red";
+    ctx.fill();
+    ctx.font = "16px sans-serif";
+    ctx.fillStyle = "black";
+    ctx.fillText(`t=${elapsed.toFixed(2)}s`, 10, 20);
+
+    animationRef.current = requestAnimationFrame(animate);
+  }
 
   useEffect(() => {
     fetch("http://localhost:8080/simulate")
-      .then((res) => res.json())
+      .then((r) => r.json())
       .then((json) => {
         setData(json);
-        const points = buildPathPoints(json);
-        positionsRef.current = points;
-        drawStaticTrack(points);
-        startAnimation();
+        pointsRef.current = buildTimedPoints(json);
+        drawTrack();
+        startTimeRef.current = performance.now();
+        animationRef.current = requestAnimationFrame(animate);
       })
-      .catch((err) => console.error("Failed to fetch:", err));
+      .catch((err) => console.error(err));
 
     return () => cancelAnimationFrame(animationRef.current);
   }, []);
 
-  const buildPathPoints = (data) => {
-    let x = 300, y = 300, angle = 0;
-    const points = [{ x, y, angle }];
-    const scale = .5;
-
-    for (let i = 1; i < data.length; i++) {
-      const segment = data[i];
-      const prev = points[points.length - 1];
-
-      let dx = 0;
-      let dy = 0;
-
-      if (segment.SegmentType === "straight") {
-        dx = scale * (segment.Distance - data[i - 1].Distance) * Math.cos(angle);
-        dy = scale * (segment.Distance - data[i - 1].Distance) * Math.sin(angle);
-      } else if (segment.SegmentType === "turn") {
-        // Fake left/right turns using angle change
-        angle += Math.PI / 4; // 45 degree turn left for simplicity
-        dx = scale * 20 * Math.cos(angle);
-        dy = scale * 20 * Math.sin(angle);
-      }
-
-      x = prev.x + dx;
-      y = prev.y + dy;
-      points.push({ x, y, angle });
-    }
-
-    return points;
-  };
-    const drawStaticTrack = (points) => {
-    const ctx = canvasRef.current.getContext("2d");
-    ctx.clearRect(0, 0, 800, 600);
-
-    ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
-    for (const pt of points) {
-      ctx.lineTo(pt.x, pt.y);
-    }
-    ctx.strokeStyle = "#333";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-  };
-
-  const startAnimation = () => {
-    startTimeRef.current = performance.now();
-    animationRef.current = requestAnimationFrame(animateCar);
-  };
-
-const animateCar = (timestamp) => {
-  if (!data.length || !positionsRef.current.length) {
-    return; // nothing to animate yet
-  }
-
-  const lastTime = data[data.length - 1]?.Time;
-  const elapsedSec = (timestamp - startTimeRef.current) / 1000;
-
-  // Stop animation after last time point
-  if (elapsedSec >= lastTime) {
-    drawStaticTrack(positionsRef.current);
-
-    // Draw car at final point
-    const lastPoint = positionsRef.current[positionsRef.current.length - 1];
-    const ctx = canvasRef.current.getContext("2d");
-    ctx.beginPath();
-    ctx.arc(lastPoint.x, lastPoint.y, 6, 0, 2 * Math.PI);
-    ctx.fillStyle = "red";
-    ctx.fill();
-    ctx.fillStyle = "black";
-    ctx.fillText(`Segment ${data.length}`, 10, 20);
-
-    return; // stop animating
-  }
-
-  let i = 0;
-  while (i < data.length - 1 && data[i + 1]?.Time < elapsedSec) {
-    i++;
-  }
-
-  const p1 = positionsRef.current[i];
-  const p2 = positionsRef.current[i + 1] || p1;
-  const t1 = data[i]?.Time || 0;
-  const t2 = data[i + 1]?.Time || t1;
-
-  const ratio = t2 !== t1 ? (elapsedSec - t1) / (t2 - t1) : 0;
-
-  const x = p1.x * (1 - ratio) + p2.x * ratio;
-  const y = p1.y * (1 - ratio) + p2.y * ratio;
-
-  const ctx = canvasRef.current.getContext("2d");
-  drawStaticTrack(positionsRef.current);
-
-  ctx.beginPath();
-  ctx.arc(x, y, 6, 0, 2 * Math.PI);
-  ctx.fillStyle = "red";
-  ctx.fill();
-
-  ctx.fillStyle = "black";
-  ctx.font = "16px sans-serif";
-  ctx.fillText(`Segment ${i + 1}`, 10, 20);
-
-  animationRef.current = requestAnimationFrame(animateCar);
-};
-
   return (
     <div className="App">
       <h1>Solar Car Track Simulation</h1>
-
       <canvas
         ref={canvasRef}
         width={800}
         height={600}
-        style={{ border: "2px solid black", margin: "20px 0" }}
+        style={{ border: "2px solid black", marginBottom: 20 }}
       />
-
       <table>
         <thead>
           <tr>
-            <th>Segment</th>
+            <th>Seg</th>
             <th>Type</th>
-            <th>Distance (m)</th>
-            <th>Speed (m/s)</th>
-            <th>Energy (Wh)</th>
-            <th>Time (s)</th>
+            <th>Dist (m)</th>
+            <th>Speed</th>
+            <th>Energy</th>
+            <th>Time</th>
           </tr>
         </thead>
         <tbody>
-          {data.map((dp, idx) => (
-            <tr key={idx}>
-              <td>{idx + 1}</td>
-              <td>{dp.SegmentType}</td>
-              <td>{dp.Distance.toFixed(2)}</td>
-              <td>{dp.Speed.toFixed(2)}</td>
-              <td>{dp.Energy.toFixed(2)}</td>
-              <td>{dp.Time.toFixed(2)}</td>
+          {data.map((d, i) => (
+            <tr key={i}>
+              <td>{i + 1}</td>
+              <td>{d.SegmentType}</td>
+              <td>{d.Distance.toFixed(2)}</td>
+              <td>{d.Speed.toFixed(2)}</td>
+              <td>{d.Energy.toFixed(2)}</td>
+              <td>{d.Time.toFixed(2)}</td>
             </tr>
           ))}
         </tbody>

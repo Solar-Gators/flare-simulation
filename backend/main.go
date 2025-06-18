@@ -1,14 +1,11 @@
 package main
 
 import (
-	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"log"
 	"math"
 	"net/http"
-	"os"
-	"strconv"
 )
 
 type SegmentType string
@@ -87,7 +84,7 @@ func SimulateStrategy(track []Segment, input StrategyInput) []DataPoint {
 				totalTime += timeToSlow
 				currentSpeed = maxTurnSpeed
 
-				data = append(data, DataPoint{totalDistance, currentSpeed, totalTime, 0, segment.Type})
+				data = append(data, DataPoint{totalDistance, currentSpeed, totalTime, 0, segment.Type, segment.Radius})
 
 			}
 		}
@@ -116,7 +113,7 @@ func SimulateStrategy(track []Segment, input StrategyInput) []DataPoint {
 			totalTime += timeToAccel
 			totalEnergy += energyUsed
 
-			data = append(data, DataPoint{totalDistance, targetSpeed, totalTime, energyUsed, segment.Type})
+			data = append(data, DataPoint{totalDistance, targetSpeed, totalTime, energyUsed, segment.Type, segment.Radius})
 
 		}
 
@@ -137,7 +134,7 @@ func SimulateStrategy(track []Segment, input StrategyInput) []DataPoint {
 			totalDistance += remaining
 			totalTime += time
 			totalEnergy += energyUsed
-			data = append(data, DataPoint{totalDistance, cruiseSpeed, totalTime, energyUsed, segment.Type})
+			data = append(data, DataPoint{totalDistance, cruiseSpeed, totalTime, energyUsed, segment.Type, segment.Radius})
 
 			currentSpeed = cruiseSpeed
 		}
@@ -152,32 +149,35 @@ type DataPoint struct {
 	Time        float64
 	Energy      float64
 	SegmentType SegmentType
+	Radius      float64
 }
 
-func WriteCSV(data []DataPoint, filename string) error {
-	file, err := os.Create(filename)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
+//CSV?
 
-	writer := csv.NewWriter(file)
-	defer writer.Flush()
+// func WriteCSV(data []DataPoint, filename string) error {
+// 	file, err := os.Create(filename)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	defer file.Close()
 
-	writer.Write([]string{"Segment", "Type", "Distance (m)", "Speed (m/s)", "Energy (Wh)"})
+// 	writer := csv.NewWriter(file)
+// 	defer writer.Flush()
 
-	for i, dp := range data {
-		writer.Write([]string{
-			strconv.Itoa(i + 1),
-			string(dp.SegmentType),
-			strconv.FormatFloat(dp.Distance, 'f', 2, 64),
-			strconv.FormatFloat(dp.Speed, 'f', 2, 64),
-			strconv.FormatFloat(dp.Energy, 'f', 2, 64),
-		})
-	}
+// 	writer.Write([]string{"Segment", "Type", "Distance (m)", "Speed (m/s)", "Energy (Wh)"})
 
-	return nil
-}
+// 	for i, dp := range data {
+// 		writer.Write([]string{
+// 			strconv.Itoa(i + 1),
+// 			string(dp.SegmentType),
+// 			strconv.FormatFloat(dp.Distance, 'f', 2, 64),
+// 			strconv.FormatFloat(dp.Speed, 'f', 2, 64),
+// 			strconv.FormatFloat(dp.Energy, 'f', 2, 64),
+// 		})
+// 	}
+
+// 	return nil
+// }
 
 func handleSimulate(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*") // for local dev
@@ -194,9 +194,9 @@ func handleSimulate(w http.ResponseWriter, r *http.Request) {
 			i+1, dp.SegmentType, dp.Distance, dp.Speed, dp.Energy, dp.Time)
 	}
 
-	if err := WriteCSV(result, "simulation_output.csv"); err != nil {
-		log.Fatal(err)
-	}
+	// if err := WriteCSV(result, "simulation_output.csv"); err != nil {
+	// 	log.Fatal(err)
+	// }
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
 }
