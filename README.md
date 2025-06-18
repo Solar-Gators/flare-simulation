@@ -10,12 +10,12 @@
 
 ### Backend (Go Simulation Server)
 
-```bash
+
 cd backend
 go run main.go
 
-cd ..
-
+### Frontend (Vite/React Frontend)
+```bash
 cd frontend
 npm install
 npm run dev
