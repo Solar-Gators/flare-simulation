@@ -123,10 +123,11 @@ function App() {
     animationRef.current = requestAnimationFrame(animate);
   }
 
-  useEffect(() => {
+  function runSimulation() {
     fetch("http://localhost:8080/simulate")
       .then((r) => r.json())
       .then((json) => {
+        console.log("running");
         setData(json);
         pointsRef.current = buildTimedPoints(json);
         drawTrack();
@@ -134,10 +135,51 @@ function App() {
         animationRef.current = requestAnimationFrame(animate);
       })
       .catch((err) => console.error(err));
+  }
 
-    return () => cancelAnimationFrame(animationRef.current);
-  }, []);
+  // handles the textbox submission to the backend
 
+  //values displayed
+  const [solarrate, setSolarrate] = useState("");
+  const [maxspeed, setMaxspeed] = useState("");
+  const [maxgforce, setMaxgforce] = useState("");
+
+  //temp values for button onchange
+  const [temp_solarrate, setTemp_solarrate] = useState("");
+  const [temp_maxspeed, setTemp_maxspeed] = useState("");
+  const [temp_maxgforce, setTemp_maxgforce] = useState("");
+
+  //turns final values into temp values and sends POST request to backend
+  function handleClick() {
+    const solar = parseFloat(temp_solarrate);
+    const speed = parseFloat(temp_maxspeed);
+    const gforce = parseFloat(temp_maxgforce);
+
+    // Update state (for display b/c React variables are asynch and fetch is called with old/null data)
+    setSolarrate(solar);
+    setMaxspeed(speed);
+    setMaxgforce(gforce);
+    fetch("http://localhost:8080/input", {
+      method: "POST",
+      headers: {
+        "Content-type": "application/json",
+      },
+      body: JSON.stringify({
+        maxSpeed: speed,
+        maxGForce: gforce,
+        solarRate: solar,
+      }),
+    })
+      .then(() => {
+        console.log("Input successfully sent");
+      })
+      .then((data) => {
+        console.log("Response from backend:", data);
+      })
+      .catch((err) => {
+        console.error("Error:", err);
+      });
+  }
   return (
     <div className="App">
       <h1>Solar Car Track Simulation</h1>
@@ -147,30 +189,80 @@ function App() {
         height={600}
         style={{ border: "2px solid black", marginBottom: 20 }}
       />
-      <table>
-        <thead>
-          <tr>
-            <th>Seg</th>
-            <th>Type</th>
-            <th>Dist (m)</th>
-            <th>Speed</th>
-            <th>Energy</th>
-            <th>Time</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.map((d, i) => (
-            <tr key={i}>
-              <td>{i + 1}</td>
-              <td>{d.SegmentType}</td>
-              <td>{d.Distance.toFixed(2)}</td>
-              <td>{d.Speed.toFixed(2)}</td>
-              <td>{d.Energy.toFixed(2)}</td>
-              <td>{d.Time.toFixed(2)}</td>
+      <div>
+        <table>
+          <thead>
+            <tr>
+              <th>Seg</th>
+              <th>Type</th>
+              <th>Dist (m)</th>
+              <th>Speed</th>
+              <th>Energy</th>
+              <th>Time</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {data.map((d, i) => (
+              <tr key={i}>
+                <td>{i + 1}</td>
+                <td>{d.SegmentType}</td>
+                <td>{d.Distance.toFixed(2)}</td>
+                <td>{d.Speed.toFixed(2)}</td>
+                <td>{d.Energy.toFixed(2)}</td>
+                <td>{d.Time.toFixed(2)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <input
+          style={{ margin: "50px" }}
+          type="text"
+          placeholder="Current Solar Panel Yield"
+          value={temp_solarrate}
+          onChange={(e) => {
+            setTemp_solarrate(e.target.value);
+          }}
+        />
+        <input
+          style={{ margin: "50px" }}
+          type="text"
+          placeholder="Target Max Speed"
+          value={temp_maxspeed}
+          onChange={(e) => {
+            setTemp_maxspeed(e.target.value);
+          }}
+        />
+        <input
+          style={{ margin: "50px" }}
+          type="text"
+          placeholder="Max G-Force"
+          value={temp_maxgforce}
+          onChange={(e) => {
+            setTemp_maxgforce(e.target.value);
+          }}
+        />
+        <button
+          onClick={() => {
+            handleClick();
+          }}
+        >
+          Submit
+        </button>
+        <button style={{ margin: "30px" }} onClick={runSimulation}>
+          Run
+        </button>
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <h3 style={{ margin: 0, padding: 0 }}>
+            Current Solar Yield: {solarrate}
+          </h3>
+          <h3 style={{ margin: 0, padding: 0 }}>
+            Current Max Speed: {maxspeed}
+          </h3>
+          <h3 style={{ margin: 0, padding: 0 }}>
+            Current Max G-force: {maxgforce}
+          </h3>
+        </div>
+      </div>
     </div>
   );
 }

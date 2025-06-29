@@ -8,7 +8,6 @@ import (
 	"net/http"
 )
 
-// I'm gonna end it all
 type SegmentType string
 
 const (
@@ -36,9 +35,9 @@ var track = []Segment{
 }
 
 type StrategyInput struct {
-	MaxSpeed  float64 // m/s
-	MaxGForce float64 // in G (convert to m/s²)
-	SolarRate float64 // in Wh/min
+  MaxSpeed  float64 `json:"maxSpeed"`
+  MaxGForce float64 `json:"maxGForce"`
+  SolarRate float64 `json:"solarRate"`
 }
 
 //this will come from real world test data
@@ -180,15 +179,51 @@ type DataPoint struct {
 // 	return nil
 // }
 
-func handleSimulate(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*") // for local dev
+//stores input
+
+var lastinput *StrategyInput
+
+func handleInput(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("input received")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 	w.Header().Set("Content-Type", "application/json")
-	input := StrategyInput{
-		MaxSpeed:  20.0,
-		MaxGForce: 1.5,
-		SolarRate: 200.0,
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
 	}
-	result := SimulateStrategy(track, input)
+	if r.Method != http.MethodPost {
+	http.Error(w, "Wrong Method", http.StatusMethodNotAllowed)
+	return
+	}
+	var input StrategyInput
+	err := json.NewDecoder(r.Body).Decode(&input)
+	if err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+	lastinput = &input
+	fmt.Println("input Saved: ", input)
+	w.WriteHeader(http.StatusOK)
+
+}
+
+func handleSimulate(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodGet {
+		http.Error(w, "Wrong Method", http.StatusMethodNotAllowed)
+		return
+	}
+	if lastinput == nil {
+		http.Error(w, "No input has been provided yet", http.StatusBadRequest)
+		return
+	}
+	fmt.Println("Running simulation with:", *lastinput)
+	result := SimulateStrategy(track, *lastinput)
 	fmt.Printf("%-10s %-10s %-12s %-12s %-10s %-12s\n", "Segment", "Type", "Distance (m)", "Speed (m/s)", "Energy (Wh)", "Time (T)")
 	for i, dp := range result {
 		fmt.Printf("%-10d %-10s %-12.2f %-12.2f %-10.2f %-12.2f\n",
@@ -205,6 +240,7 @@ func handleSimulate(w http.ResponseWriter, r *http.Request) {
 func main() {
 
 	http.HandleFunc("/simulate", handleSimulate)
+	http.HandleFunc("/input", handleInput)
 	fmt.Println("🚀 Server running at http://localhost:8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 
