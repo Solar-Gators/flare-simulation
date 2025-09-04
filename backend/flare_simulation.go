@@ -3,5 +3,16 @@ package main
 import "fmt"
 
 func main() {
-	fmt.Print("hello world!")
+	var solarYield int
+	var maxSpeed int
+	var maxGforce int
+
+	fmt.Println("Enter the current solar panel yield (energy/min): ")
+	fmt.Scan(&solarYield)
+
+	fmt.Println("Enter the target max speed: ")
+	fmt.Scan(&maxSpeed)
+
+	fmt.Println("Enter max g-force allowed: ")
+	fmt.Scan(&maxGforce)
 }
