@@ -15,4 +15,8 @@ func main() {
 
 	fmt.Println("Enter max g-force allowed: ")
 	fmt.Scan(&maxGforce)
+
+	straight_path := Segment{Length: 50, IsCurve: false, Radius: 0}
+
+	race_track := Track{Segments: []Segment{straight_path}}
 }
