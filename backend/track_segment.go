@@ -7,3 +7,7 @@ type Segment struct {
 	isCurve bool;
 	radius int;
 }
+
+type Track struct {
+	segment []Segment;
+}
