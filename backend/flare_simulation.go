@@ -3,29 +3,27 @@ package main
 import "fmt"
 
 func main() {
-	/*solarYield := 0
-	maxSpeed := 50
+	/*solarYield := 0.0
+	maxSpeed := 50.0
 	maxGforce := 0.5 */
-	battCharge := 100 
+	battCharge := 100.0 
 
-	straight_path := Segment{Length: 100, Radius: 0}
-	straight_path1 := Segment{Length: 100, Radius: 0}
-	straight_path2 := Segment{Length: 100, Radius: 0}
+	straight_path := Segment{Length: 100}
+	straight_path1 := Segment{Length: 100}
+	straight_path2 := Segment{Length: 100}
+	straight_path3 := Segment{Radius: 90, Angle: 90}
 
-	race_track := Track{Segments: []Segment{straight_path, straight_path1, straight_path2}}
+	race_track := Track{Segments: []Segment{straight_path, straight_path1, straight_path2, straight_path3}}
 
-	totalLength := 0
+	totalLength := 0.0
 	for i := 0; i < len(race_track.Segments); i++ {
-		if (race_track.Segments[i].Radius != 0) {
-			//call arc length
-		}
-		totalLength += race_track.Segments[i].Length
+		totalLength += race_track.Segments[i].getArcLength();
 	}
 
-	for i := 1; i <= totalLength; i++ {
+	for i := 1.0; i <= totalLength; i++ {
 		fmt.Print(i);
 		fmt.Print(": ")
-		fmt.Print(float64(battCharge) / float64(totalLength))
+		fmt.Print(battCharge / totalLength)
 		fmt.Println()
 	}
 }
