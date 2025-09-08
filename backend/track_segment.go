@@ -1,11 +1,10 @@
 package main
 
 type Segment struct {
-	length int;
-	isCurve bool;
-	radius int;
+	Length int
+	Radius int
 }
 
 type Track struct {
-	segment []Segment;
+	Segments []Segment
 }
