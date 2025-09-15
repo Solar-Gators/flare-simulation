@@ -3,6 +3,7 @@ package main
 import (
 	"math"
 )
+
 type Segment struct {
 	Length float64
 	Radius float64
@@ -19,4 +20,14 @@ func (s Segment) getArcLength() float64 {
 
 type Track struct {
 	Segments []Segment
+	length   float64
+}
+
+func getTotalLength(t Track) float64 {
+
+	for _, seg := range t.Segments {
+		t.length += seg.getArcLength()
+	}
+	return t.length
+
 }
