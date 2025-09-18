@@ -8,6 +8,9 @@ type Segment struct {
 	Length float64
 	Radius float64
 	Angle  float64
+
+	//try to make it so that the segment appends to the track
+	//appendSegment()
 }
 
 func (s Segment) getArcLength() float64 {
@@ -21,6 +24,11 @@ func (s Segment) getArcLength() float64 {
 type Track struct {
 	Segments []Segment
 	length   float64
+}
+
+// WIP
+func appendSegment(s Segment, t Track) {
+	t.Segments = append(t.Segments, s)
 }
 
 func getTotalLength(t Track) float64 {
