@@ -1,6 +1,10 @@
 package main
 
-import "math"
+
+import (
+	"math"
+	"fmt"
+)
 
 func newTotalEnergy(solarYield float64, /* watt hours / minute */
 	raceDayTime float64, /* in minutes */
@@ -97,3 +101,24 @@ func DistanceAtCruise(E, v, m, g, Crr, rho, Cd, A, theta float64) float64 {
 	}
 	return E / F
 }
+
+func TotalDistanceEV(
+    solarYieldWhPerMin, raceDayMin, batteryWh float64,
+    etaDrive float64,
+    // EV capability:
+    rWheel, Tmax, Pmax float64, // wheel radius (m), max motor torque (Nm), power cap (W)
+    // Environment/vehicle:
+    m, g, Crr, rho, Cd, A, theta float64,
+) (distM float64, ok bool) {
+    v, ok := CruiseSpeedEV(m, g, Crr, rho, Cd, A, rWheel, Tmax, Pmax, etaDrive, theta)
+    if !ok || v <= 0 {
+        return math.NaN(), false
+    }
+    EWh := newTotalEnergy(solarYieldWhPerMin, raceDayMin, batteryWh)
+    EJwheel := EWh * 3600.0 * etaDrive
+    return DistanceAtCruise(EJwheel, v /* no wind here */, m, g, Crr, rho, Cd, A, theta), true
+}
+
+TotalDistanceEV()
+
+fmt.Println()
