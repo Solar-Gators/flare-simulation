@@ -2,6 +2,7 @@ package main
 
 import "fmt"
 
+
 func main() {
 	/*solarYield := 0.0
 	maxSpeed := 50.0
