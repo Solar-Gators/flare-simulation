@@ -29,6 +29,4 @@ func main() {
 		fmt.Println()
 	}
 
-    speeds := CalcGforce(race_track.Segments)
-    fmt.Println(speeds)
 }
