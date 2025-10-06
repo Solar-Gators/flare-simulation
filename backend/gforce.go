@@ -23,25 +23,33 @@ func curveAccelEnergy(coastSpeed float64, currentSpeed float64, acceleration flo
 func calcCoastDistance(
 	currentSpeed float64, 
 	segment Segment, 
-	drag float64, 
-	rollingRes float64, 
+	aDrag float64, 
+	rRes float64, 
 	gravity float64, 
 	gmax float64, 
 	mass float64, 
-	frontalArea float64, 
-	airDensity float64) float64 {
-
+	fArea float64, 
+	rho float64) float64 {
+	//segment: upcoming curve segment
+	//aDrag: aerodynamic drag
+	//rRes: rolling resistance
+	//fArea: frontal area
+	//rho: air density
+	
+	//target speed obtained from CalcGforce func
 	targetSpeed := CalcGforce(segment, gravity, gmax)
+
+	//squaring initial and end speeds
 	initSpeedSquared := math.Pow(currentSpeed, 2)
 	endSpeedSquared := math.Pow(targetSpeed, 2)
 
 	//quotient of coasting distance formula
-	startTerm := (((airDensity*drag*frontalArea)/(2*mass)*initSpeedSquared + (rollingRes*gravity)))
-	endTerm := (((airDensity*drag*frontalArea)/(2*mass)*endSpeedSquared + (rollingRes*gravity)))
+	startTerm := (((rho*aDrag*fArea)/(2*mass)*initSpeedSquared + (rRes*gravity)))
+	endTerm := (((rho*aDrag*fArea)/(2*mass)*endSpeedSquared + (rRes*gravity)))
 
 	lnTerm := math.Log(startTerm/endTerm)
-
-	coastDistance := ((mass/(airDensity*drag*frontalArea))*lnTerm)
+	
+	coastDistance := ((mass/(rho*aDrag*fArea))*lnTerm)
 	return coastDistance
 }
 
