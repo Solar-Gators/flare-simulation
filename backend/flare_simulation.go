@@ -19,11 +19,11 @@ func main() {
 
 	totalLength := 0.0
 	for i := 0; i < len(race_track.Segments); i++ {
-		totalLength += race_track.Segments[i].getArcLength();
+		totalLength += race_track.Segments[i].getArcLength()
 	}
 
 	for i := 1.0; i <= totalLength; i++ {
-		fmt.Print(i);
+		fmt.Print(i)
 		fmt.Print(": ")
 		fmt.Print(battCharge / totalLength)
 		fmt.Println()
