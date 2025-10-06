@@ -1,9 +1,7 @@
 package main
 
-
 import (
 	"math"
-	"fmt"
 )
 
 func newTotalEnergy(solarYield float64, /* watt hours / minute */
@@ -47,6 +45,72 @@ func SolveCruise(
 	}
 	return 0.5 * (vMin + vMax), true
 }
+
+func WheelPowerEV(v, Tmax, Pmax, rWheel, eta float64) float64 {
+	// v: vehicle speed [m/s]
+	// Tmax: max wheel torque [N·m] (post-gearing)
+	// Pmax: electrical power cap at battery/inverter [W]
+	// rWheel: wheel effective radius [m]
+	// eta: battery→wheel efficiency [0..1]
+	// Returns: available wheel mechanical power [W]
+
+	if v <= 0 || rWheel <= 0 || eta <= 0 {
+		return 0
+	}
+	// Wheel angular speed [rad/s]
+	omegaWheel := v / rWheel
+
+	// Torque-limited wheel power (mechanical)
+	P_torque := Tmax * omegaWheel // [W]
+
+	// Power cap at the wheel after drivetrain losses
+	P_cap := eta * Pmax // [W]
+
+	if P_torque < P_cap {
+		return P_torque
+	}
+	return P_cap
+}
+
+func WheelPowerICE(
+	v, gearRatio, finalDrive, rWheel, eta float64,
+	torqueAtRPM func(rpm float64) float64,
+) float64 {
+	// v: vehicle speed [m/s]
+	// gearRatio: selected gear ratio (unitless)
+	// finalDrive: differential/final drive ratio (unitless)
+	// rWheel: wheel effective radius [m]
+	// eta: crank→wheel driveline efficiency [0..1]
+	// torqueAtRPM: engine torque curve, returns crank torque [N·m] at given RPM
+	// Returns: available wheel mechanical power [W]
+
+	if v <= 0 || rWheel <= 0 || gearRatio <= 0 || finalDrive <= 0 || eta <= 0 {
+		return 0
+	}
+
+	// Wheel and engine angular speeds
+	omegaWheel := v / rWheel                        // [rad/s]
+	omegaEngine := omegaWheel * gearRatio * finalDrive
+	rpm := omegaEngine * 60.0 / (2.0 * math.Pi) // [RPM]
+
+	if rpm <= 0 || math.IsNaN(rpm) || math.IsInf(rpm, 0) {
+		return 0
+	}
+
+	Teng := torqueAtRPM(rpm) // crank torque [N·m]
+	if Teng <= 0 || math.IsNaN(Teng) || math.IsInf(Teng, 0) {
+		return 0
+	}
+
+	// Crank (engine) power, then apply driveline efficiency to get wheel power
+	P_crank := Teng * omegaEngine // [W]
+	P_wheel := eta * P_crank      // [W]
+	if P_wheel < 0 || math.IsNaN(P_wheel) || math.IsInf(P_wheel, 0) {
+		return 0
+	}
+	return P_wheel
+}
+
 
 func CruiseSpeedEV(
 	m, g, Crr, rho, Cd, A float64,
@@ -103,22 +167,18 @@ func DistanceAtCruise(E, v, m, g, Crr, rho, Cd, A, theta float64) float64 {
 }
 
 func TotalDistanceEV(
-    solarYieldWhPerMin, raceDayMin, batteryWh float64,
-    etaDrive float64,
-    // EV capability:
-    rWheel, Tmax, Pmax float64, // wheel radius (m), max motor torque (Nm), power cap (W)
-    // Environment/vehicle:
-    m, g, Crr, rho, Cd, A, theta float64,
+	solarYieldWhPerMin, raceDayMin, batteryWh float64,
+	etaDrive float64,
+	// EV capability:
+	rWheel, Tmax, Pmax float64, // wheel radius (m), max motor torque (Nm), power cap (W)
+	// Environment/vehicle:
+	m, g, Crr, rho, Cd, A, theta float64,
 ) (distM float64, ok bool) {
-    v, ok := CruiseSpeedEV(m, g, Crr, rho, Cd, A, rWheel, Tmax, Pmax, etaDrive, theta)
-    if !ok || v <= 0 {
-        return math.NaN(), false
-    }
-    EWh := newTotalEnergy(solarYieldWhPerMin, raceDayMin, batteryWh)
-    EJwheel := EWh * 3600.0 * etaDrive
-    return DistanceAtCruise(EJwheel, v /* no wind here */, m, g, Crr, rho, Cd, A, theta), true
+	v, ok := CruiseSpeedEV(m, g, Crr, rho, Cd, A, rWheel, Tmax, Pmax, etaDrive, theta)
+	if !ok || v <= 0 {
+		return math.NaN(), false
+	}
+	EWh := newTotalEnergy(solarYieldWhPerMin, raceDayMin, batteryWh)
+	EJwheel := EWh * 3600.0 * etaDrive
+	return DistanceAtCruise(EJwheel, v /* no wind here */, m, g, Crr, rho, Cd, A, theta), true
 }
-
-TotalDistanceEV()
-
-fmt.Println()

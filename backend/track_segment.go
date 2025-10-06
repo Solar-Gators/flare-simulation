@@ -23,7 +23,7 @@ func (s Segment) getArcLength() float64 {
 
 type Track struct {
 	Segments []Segment
-	length   float64
+	Length   float64
 }
 
 // WIP
@@ -34,8 +34,8 @@ func appendSegment(s Segment, t Track) {
 func getTotalLength(t Track) float64 {
 
 	for _, seg := range t.Segments {
-		t.length += seg.getArcLength()
+		t.Length += seg.getArcLength()
 	}
-	return t.length
+	return t.Length
 
 }
