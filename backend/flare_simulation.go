@@ -2,18 +2,20 @@ package main
 
 import "fmt"
 
+
+
 func main() {
 	/*solarYield := 0.0
 	maxSpeed := 50.0
 	maxGforce := 0.5 */
-	battCharge := 100.0
-
+	battCharge := 100.0 
+	//time 19.22 for day 1
 	straight_path := Segment{Length: 100}
 	straight_path1 := Segment{Length: 100}
 	straight_path2 := Segment{Length: 100}
-	straight_path3 := Segment{Radius: 90, Angle: 90}
+	curved_path := Segment{Radius: 90, Angle: 90}
 
-	race_track := Track{Segments: []Segment{straight_path, straight_path1, straight_path2, straight_path3}}
+	race_track := Track{Segments: []Segment{straight_path, straight_path1, straight_path2, curved_path}}
 
 	totalLength := 0.0
 	for i := 0; i < len(race_track.Segments); i++ {
@@ -25,15 +27,6 @@ func main() {
 		fmt.Print(": ")
 		fmt.Print(battCharge / totalLength)
 		fmt.Println()
-	}
-
-	type SimConfig struct {
-		DtSec, SpeedMS, StartEWh float64
-		Track                    Track
-	}
-
-	type SimState struct {
-		Tsec, Xm, EWh float64 // time(s), distance(m), remaining energy(Wh)
 	}
 
 }
