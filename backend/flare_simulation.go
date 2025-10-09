@@ -1,14 +1,15 @@
 package main
 
-import "fmt"
-
-
+import (
+	"fmt"
+	"math"
+)
 
 func main() {
 	/*solarYield := 0.0
 	maxSpeed := 50.0
 	maxGforce := 0.5 */
-	battCharge := 100.0 
+	//battCharge := 100.0
 	//time 19.22 for day 1
 	straight_path := Segment{Length: 100}
 	straight_path1 := Segment{Length: 100}
@@ -21,12 +22,10 @@ func main() {
 	for i := 0; i < len(race_track.Segments); i++ {
 		totalLength += race_track.Segments[i].getArcLength()
 	}
-
-	for i := 1.0; i <= totalLength; i++ {
-		fmt.Print(i)
-		fmt.Print(": ")
-		fmt.Print(battCharge / totalLength)
-		fmt.Println()
+	ClearStepStatstoCSV()
+	for i := 0.1; i <= 25.0; i = i + 0.1 {
+		d, _ := TestTotalDistanceEV(5.0, 480.0, 5000.0, .92, 0.2792, 45.0, 10000.0, 285.0, 9.81, 0.0015, 1.225, 0.21, 0.456, 0, i)
+		fmt.Println(math.Round(d))
+		WriteStepStatstoCSV(i, math.Round(d), 0.0)
 	}
-
 }
