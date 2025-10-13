@@ -14,13 +14,13 @@ func CalcGforce(segments Segment, gravity float64, gmax float64) float64 {
 //determines distance to let off accelerator before a curve to hit target speed
 //taking in the same params as CalcGForce to be passed into it
 func calcCoastDistance(
-	currentSpeed float64, 
-	segment Segment, 
-	aDrag float64, 
-	rRes float64, 
-	gravity float64, 
-	gmax float64, 
-	mass float64, 
+	currentSpeed float64,
+	segment Segment,
+	aDrag float64,
+	rRes float64,
+	gravity float64,
+	gmax float64,
+	mass float64,
 	fArea float64, 
 	rho float64) float64 {
 	//segment: upcoming curve segment
