@@ -26,6 +26,8 @@ func main() {
 	for i := 0.1; i <= 25.0; i = i + 0.1 {
 		d, _ := TestTotalDistanceEV(5.0, 480.0, 5000.0, .92, 0.2792, 45.0, 10000.0, 285.0, 9.81, 0.0015, 1.225, 0.21, 0.456, 0, i)
 		fmt.Println(math.Round(d))
-		WriteStepStatstoCSV(i, math.Round(d), 0.0)
+		fmt.Println(newTotalEnergy(5.0, 480.0, 5000.0))
+		fmt.Println(PowerRequired(i, 285.0, 9.81, 0.0015, 1.225, 0.21, 0.456, 0))
+		WriteStepStatstoCSV(i, math.Round(d), newTotalEnergy(5.0, 480.0, 5000.0)-PowerRequired(i, 285.0, 9.81, 0.0015, 1.225, 0.21, 0.456, 0)*8)
 	}
 }
