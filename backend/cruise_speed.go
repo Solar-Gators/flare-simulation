@@ -208,9 +208,9 @@ func DistanceForSpeedEV(
 
 	// Otherwise battery drains at (Preq - PsolarWheelW)
 	drain := Preq - PsolarWheelW
-	if drain <= 0 {
-		return v * Tsec, true
-	}
+	// if drain <= 0 {
+	// 	return v * Tsec, true
+	// }
 	tEnd := EbattWheelJ / drain
 	if tEnd < 0 {
 		tEnd = 0

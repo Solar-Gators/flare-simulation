@@ -1,4 +1,4 @@
-Velocity (m/s),Distance (m),Energy Left (Wh)
+Time (s),Distance (m),Energy Left (Wh)
 0.1, 2880, 7396.644510776
 0.2, 5760, 7393.286206208
 0.30000000000000004, 8640, 7389.922270952
