@@ -24,6 +24,7 @@ func simulateCoast(race_track Track){
 		mass := 285.0
 		fArea := 0.456 //frontal area
 		rho := 1.225 //air density
+		bottomE := 4.0 //Watts per hour
 
 		if (upcomingCurve.Radius > 0) {
 			DistanceToCoast := calcCoastDistance(speed, upcomingCurve, aDrag, rRes, gravity, gmax, mass, fArea, rho)
@@ -32,6 +33,16 @@ func simulateCoast(race_track Track){
 			} else if (DistanceToCoast > race_track.Segments[i].Length){
 				fmt.Println("Not enough track to slow down: ", DistanceToCoast, "meters needed")
 			} else {fmt.Println("Coast to target with: ", DistanceToCoast, "meters")
+			time := DistanceToCoast / speed
+			//theta temporarily 0
+			//watts
+			//energy while cruising on straightaway 
+			cruiseEnergy := PowerRequired(speed, mass, gravity, rRes, rho, aDrag, fArea, 0) * time
+			// Watts per hour 
+			//Total energy conserved while cruising 
+			conservedE := coastConservation(cruiseEnergy, bottomE, DistanceToCoast)
+
+			fmt.Println("Energy saved: ", conservedE)
 			}
 		} 
 	}

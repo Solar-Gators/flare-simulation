@@ -47,6 +47,7 @@ func calcCoastDistance(
 
 // How much energy is saved by letting off the gas before a curve
 func coastConservation(coastEnergy, bottomEnergy, distance float64) float64 {
+	//bottomEnergy is arbitrary constant 
 	energyConserved := distance * (coastEnergy - bottomEnergy)
 	return energyConserved
 }
