@@ -17,8 +17,8 @@ func simulateCoast(race_track Track){
 		}
 		speed := 27.0 //in meters per second
 		upcomingCurve := race_track.Segments[i+1]
-		aDrag := 0.21
-		rRes := 0.0015
+		aDrag := 0.21 //Cd
+		rRes := 0.0015 //Crr
 		gravity := 9.81
 		gmax := 0.8
 		mass := 285.0
@@ -37,11 +37,10 @@ func simulateCoast(race_track Track){
 			//theta temporarily 0
 			//watts
 			//energy while cruising on straightaway 
-			cruiseEnergy := PowerRequired(speed, mass, gravity, rRes, rho, aDrag, fArea, 0) * time
+			cruiseEnergy := PowerRequired(speed, mass, gravity, rRes, rho, aDrag, fArea, 0) * time / 3600
 			// Watts per hour 
 			//Total energy conserved while cruising 
 			conservedE := coastConservation(cruiseEnergy, bottomE, DistanceToCoast)
-
 			fmt.Println("Energy saved: ", conservedE)
 			}
 		} 
