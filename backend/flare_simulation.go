@@ -24,26 +24,34 @@ func simulateCoast(race_track Track){
 		mass := 285.0
 		fArea := 0.456 //frontal area
 		rho := 1.225 //air density
-		bottomE := 4.0 //Watts per hour
-
+		bottomE := 0.006 //Watt hours per meter (wh/m)
+		accel := 0.5//m/s^2
 		if (upcomingCurve.Radius > 0) {
 			DistanceToCoast := calcCoastDistance(speed, upcomingCurve, aDrag, rRes, gravity, gmax, mass, fArea, rho)
+			optimalCurveSpeed := CalcGforce(upcomingCurve, gravity, gmax)
 			if (DistanceToCoast < 0){
 				fmt.Println("Already below current speed")
 			} else if (DistanceToCoast > race_track.Segments[i].Length){
 				fmt.Println("Not enough track to slow down: ", DistanceToCoast, "meters needed")
 			} else {fmt.Println("Coast to target with: ", DistanceToCoast, "meters")
-			time := DistanceToCoast / speed
-			//theta temporarily 0
-			//watts
-			//energy while cruising on straightaway 
-			cruiseEnergy := PowerRequired(speed, mass, gravity, rRes, rho, aDrag, fArea, 0) * time
-			// Watts per hour 
-			//Total energy conserved while cruising 
-			conservedE := coastConservation(cruiseEnergy, bottomE, DistanceToCoast)
 
-			fmt.Println("Energy saved: ", conservedE)
+			//theta (representing elevation) is temporarily 0
+			//Cruise energy used in wh/m
+			cruiseWhPerM := PowerRequired(speed, mass, gravity, rRes, rho, aDrag, fArea, 0) / speed / 3600.0 
+			fmt.Println("Cruise Energy in Wh/m: ", cruiseWhPerM)
+
+			//Total energy conserved over the coast distance
+			conservedE := coastConservation(cruiseWhPerM, bottomE, DistanceToCoast)
+			fmt.Println("Energy saved: ", conservedE, "in wh")
+
+			//total energy used to speed from curve speed to cruise speed
+			usedE := curveAccelEnergy(mass, fArea, aDrag, rRes, optimalCurveSpeed, speed, accel, rho, gravity)
+			fmt.Println("Energy used by accelerating to cruise: ", usedE, "in wh")
+			//finds the net losses between conserved energy (from coasting) and used energy (from accel)
+			netE := netCurveLosses(usedE, conservedE)
+			fmt.Println("Net loss of energy is: ", netE, " wh")
 			}
+			fmt.Println("------------------")
 		} 
 	}
 }
