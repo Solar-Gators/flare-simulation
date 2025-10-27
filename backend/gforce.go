@@ -105,7 +105,7 @@ func netCurveLosses(
 	fArea float64, 
 	aDrag float64, 
 	rRes float64, 
-	currSpeed float64, 
+	curveSpeed float64, 
 	cruiseSpeed float64, 
 	accel float64, 
 	rho float64, 
@@ -113,7 +113,7 @@ func netCurveLosses(
 	cruiseE float64, 
 	bottomE float64,
 	distance float64  ) float64 {
-	energyUsed := curveAccelEnergy(mass, fArea, aDrag, rRes, currSpeed, cruiseSpeed, accel, rho, gravity)
+	energyUsed := curveAccelEnergy(mass, fArea, aDrag, rRes, curveSpeed, cruiseSpeed, accel, rho, gravity)
 	energySaved := coastConservation(cruiseE, bottomE, distance)
 	return energySaved - energyUsed
 }
