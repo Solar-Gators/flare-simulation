@@ -28,7 +28,6 @@ func simulateCoast(race_track Track){
 		accel := 0.5//m/s^2
 		if (upcomingCurve.Radius > 0) {
 			DistanceToCoast := calcCoastDistance(speed, upcomingCurve, aDrag, rRes, gravity, gmax, mass, fArea, rho)
-			curveSpeed := CalcGforce(upcomingCurve, gravity, gmax)
 			if (DistanceToCoast < 0){
 				fmt.Println("Already below current speed")
 			} else if (DistanceToCoast > race_track.Segments[i].Length){
@@ -41,10 +40,10 @@ func simulateCoast(race_track Track){
 			fmt.Println("Cruise Energy in Wh/m: ", cruiseWhPerM)
 
 			//finds the net losses between conserved energy (from coasting) and used energy (from accel)
-			netE := netCurveLosses(mass, fArea, aDrag, rRes, curveSpeed, speed, accel, rho, gravity, cruiseWhPerM, bottomE, DistanceToCoast)
+			netE := netCurveLosses(mass, fArea, aDrag, rRes, upcomingCurve, speed, accel, rho, gravity, cruiseWhPerM, bottomE, DistanceToCoast, gmax)
 			fmt.Println("Net loss of energy is: ", netE, " wh")
 			}
-			fmt.Println("------------------")
+			fmt.Println("--------------------------------------------------")
 		} 
 	}
 }

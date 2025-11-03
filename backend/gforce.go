@@ -5,7 +5,7 @@ import (
 )
 
 // Calculates the max speed of upcoming curve
-func CalcGforce(segments Segment, gravity float64, gmax float64) float64 {
+func calcCurveSpeed(segments Segment, gravity float64, gmax float64) float64 {
 	radius := segments.Radius
 	maxVelocity := math.Sqrt(gmax * radius * gravity)
 	return maxVelocity
@@ -30,7 +30,7 @@ func calcCoastDistance(
 	//rho: air density
 	
 	//target speed obtained from CalcGforce func
-	targetSpeed := CalcGforce(segment, gravity, gmax) //m/s
+	targetSpeed := calcCurveSpeed(segment, gravity, gmax) //m/s
 	//squaring initial and end speeds
 	initSpeedSquared := math.Pow(currentSpeed, 2)
 	endSpeedSquared := math.Pow(targetSpeed, 2)
@@ -105,14 +105,16 @@ func netCurveLosses(
 	fArea float64, 
 	aDrag float64, 
 	rRes float64, 
-	curveSpeed float64, 
+	upcomingCurve Segment, 
 	cruiseSpeed float64, 
 	accel float64, 
 	rho float64, 
 	gravity float64, 
 	cruiseE float64, 
 	bottomE float64,
-	distance float64  ) float64 {
+	distance float64,
+	gmax float64  ) float64 {
+	curveSpeed := calcCurveSpeed(upcomingCurve, gravity, gmax)
 	energyUsed := curveAccelEnergy(mass, fArea, aDrag, rRes, curveSpeed, cruiseSpeed, accel, rho, gravity)
 	energySaved := coastConservation(cruiseE, bottomE, distance)
 	return energySaved - energyUsed

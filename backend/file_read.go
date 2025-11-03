@@ -1,7 +1,8 @@
 package main
-import(
-	"strconv"
+
+import (
 	"os"
+	"strconv"
 )
 func WriteStepStatstoCSV(time float64, distance float64, energyLeft float64) {
 	w, err := os.Open("StepStats.csv")
