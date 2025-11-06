@@ -96,9 +96,10 @@ func main() {
 				// fmt.Print("velocity: ", bestV)
 			}
 		}
+		cruiseE := PowerRequired(bestV, m, g, Crr, rho, Cd, A, theta)
 		for j := 0; j < len(t.Segments)-1; j += 1 {
 			if t.Segments[j].Radius != 0 {
-				totalLoss += int(netCurveLosses(m, A, Cd, Crr, t.Segments[j+1], i)) // MAKE A FUNCTION TO CHECK IF THE NEXT SEGMENT IS A CURVE
+				totalLoss += int(netCurveLosses(m, A, Cd, Crr, t.Segments[j+1], bestV, 0.5, rho, g, cruiseE, 0.006, bestD, .8)) // MAKE A FUNCTION TO CHECK IF THE NEXT SEGMENT IS A CURVE
 			}
 		}
 		WriteStepStatstoCSV(bestV, math.Round(bestD), battWithLosses)
