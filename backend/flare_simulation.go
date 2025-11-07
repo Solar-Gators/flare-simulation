@@ -37,8 +37,8 @@ func main() {
 			rWheel, Tmax, Pmax, m, g, Crr, rho, Cd, A, theta); ok && d > bestD {
 			bestD, bestV = d, v
 
-			fmt.Print("distance: ", d, "\n")
-			fmt.Print("velocity: ", v, "\n")
+			// fmt.Print("distance: ", d, "\n")
+			// fmt.Print("velocity: ", v, "\n")
 		}
 	}
 	// refine around best
@@ -67,7 +67,18 @@ func main() {
 
 		WriteStepStatstoCSV(i, math.Round(d), 0)
 	}
-	t := new(Track)
+	straight_path := Segment{Length: 754}
+	straight_path1 := Segment{Length: 546}
+	straight_path2 := Segment{Length: 324}
+	curved_path := Segment{Length: 100, Radius: 90, Angle: 90}
+	straight_path3 := Segment{Length: 230}
+	curved_path2 := Segment{Length: 100, Radius: 50, Angle: 90}
+	curved_path3 := Segment{Length: 100, Radius: 30, Angle: 30}
+	straight_path4 := Segment{Length: 1000}
+	curved_path4 := Segment{Length: 100, Radius: 40, Angle: 40}
+
+	t := Track{Segments: []Segment{straight_path, straight_path1, straight_path2, curved_path, straight_path3, curved_path2, curved_path3, curved_path4, straight_path4}}
+
 	fullBatt := (solarWhPerMin * 480) + batteryWh
 	battWithLosses := fullBatt
 
@@ -82,8 +93,8 @@ func main() {
 				rWheel, Tmax, Pmax, m, g, Crr, rho, Cd, A, theta); ok && d > bestD {
 				bestD, bestV = d, v
 
-				fmt.Print("distance: ", d, "\n")
-				fmt.Print("velocity: ", v, "\n")
+				// fmt.Print("distance: ", d, "\n")
+				// fmt.Print("velocity: ", v, "\n")
 			}
 		}
 		// refine around best
@@ -99,10 +110,12 @@ func main() {
 		cruiseE := PowerRequired(bestV, m, g, Crr, rho, Cd, A, theta)
 		for j := 0; j < len(t.Segments)-1; j += 1 {
 			if t.Segments[j].Radius != 0 {
-				totalLoss += int(netCurveLosses(m, A, Cd, Crr, t.Segments[j+1], bestV, 0.5, rho, g, cruiseE, 0.006, bestD, .8)) // MAKE A FUNCTION TO CHECK IF THE NEXT SEGMENT IS A CURVE
+				totalLoss += int(netCurveLosses(m, A, Cd, Crr, t.Segments[j+1], bestV, 0.5, rho, g, cruiseE, 0.006, 10, .8)) // MAKE A FUNCTION TO CHECK IF THE NEXT SEGMENT IS A CURVE
+				fmt.Print("total loss: ", totalLoss, "\n")
 			}
 		}
+		fmt.Println(numLaps)
+		battWithLosses -= float64(totalLoss)
 		WriteStepStatstoCSV(bestV, math.Round(bestD), battWithLosses)
-		totalLoss /= numLaps
 	}
 }
