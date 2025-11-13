@@ -36,9 +36,8 @@ func main() {
 		if d, ok := DistanceForSpeedEV(v, batteryWh, solarWhPerMin, etaDrive, raceDayMin,
 			rWheel, Tmax, Pmax, m, g, Crr, rho, Cd, A, theta); ok && d > bestD {
 			bestD, bestV = d, v
-
-			fmt.Print("distance: ", d, "\n")
-			fmt.Print("velocity: ", v, "\n")
+			// fmt.Print("distance: ", d, "\n")
+			// fmt.Print("velocity: ", v, "\n")
 		}
 	}
 	// refine around best
@@ -46,16 +45,13 @@ func main() {
 		if d, ok := DistanceForSpeedEV(v, batteryWh, solarWhPerMin, etaDrive, raceDayMin,
 			rWheel, Tmax, Pmax, m, g, Crr, rho, Cd, A, theta); ok && d > bestD {
 			bestD, bestV = d, v
-
 			// fmt.Print("Distance: ", bestD)
 			// fmt.Print("velocity: ", bestV)
 		}
 	}
-
 	fmt.Printf("Optimal steady speed: %.2f m/s (%.1f km/h)\n", bestV, bestV*3.6)
 	fmt.Printf("Max distance in 8h:   %.0f m (%.2f km)\n", bestD, bestD/1000.0)
 
-	fmt.Printf("hello world")
 
 	ClearStepStatstoCSV()
 	for i := 0.1; i <= 25.0; i = i + 0.1 {
@@ -67,8 +63,15 @@ func main() {
 
 		WriteStepStatstoCSV(i, math.Round(d), 0)
 	}
-	t := new(Track)
-	fullBatt := (solarWhPerMin * 480) + batteryWh
+	straight_path := Segment{Length: 100}
+	straight_path1 := Segment{Length: 100}
+	straight_path2 := Segment{Length: 100}
+	curved_path := Segment{Radius: 90, Angle: 90}
+	straight_path3 := Segment{Length: 100}
+	curved_path2 := Segment{Radius: 90, Angle: 90}
+
+	t := Track{Segments: []Segment{straight_path, straight_path1, straight_path2, curved_path, straight_path3, curved_path2}}
+	fullBatt := batteryWh
 	battWithLosses := fullBatt
 
 	//csv file tracking distance and speed + battery
@@ -82,8 +85,8 @@ func main() {
 				rWheel, Tmax, Pmax, m, g, Crr, rho, Cd, A, theta); ok && d > bestD {
 				bestD, bestV = d, v
 
-				fmt.Print("distance: ", d, "\n")
-				fmt.Print("velocity: ", v, "\n")
+				// fmt.Print("distance: ", d, "\n")
+				// fmt.Print("velocity: ", v, "\n")
 			}
 		}
 		// refine around best
@@ -91,15 +94,15 @@ func main() {
 			if d, ok := DistanceForSpeedEV(v, battWithLosses-(solarWhPerMin*480), solarWhPerMin, etaDrive, raceDayMin,
 				rWheel, Tmax, Pmax, m, g, Crr, rho, Cd, A, theta); ok && d > bestD {
 				bestD, bestV = d, v
-
 				// fmt.Print("Distance: ", bestD)
 				// fmt.Print("velocity: ", bestV)
 			}
 		}
 		cruiseE := PowerRequired(bestV, m, g, Crr, rho, Cd, A, theta)
-		for j := 0; j < len(t.Segments)-1; j += 1 {
+		for j := 0; j < len(t.Segments); j++ {
 			if t.Segments[j].Radius != 0 {
-				totalLoss += int(netCurveLosses(m, A, Cd, Crr, t.Segments[j+1], bestV, 0.5, rho, g, cruiseE, 0.006, bestD, .8)) // MAKE A FUNCTION TO CHECK IF THE NEXT SEGMENT IS A CURVE
+				totalLoss += int(netCurveLosses(m, A, Cd, Crr, t.Segments[j+1], bestV, 0.5, rho, g, cruiseE, 0.006, bestD, 0.8)) // MAKE A FUNCTION TO CHECK IF THE NEXT SEGMENT IS A CURVE
+				fmt.Println(totalLoss)
 			}
 		}
 		WriteStepStatstoCSV(bestV, math.Round(bestD), battWithLosses)

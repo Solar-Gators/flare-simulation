@@ -169,56 +169,42 @@ func DistanceAtCruise(E, v, m, g, Crr, rho, Cd, A, theta float64) float64 {
 // ground speed v (m/s) over raceDayMin, using E (battery energy) and concurrent solar,
 // and whether that speed is feasible (power-wise).
 func DistanceForSpeedEV(
-	E, v, m, g, Crr, rho, Cd, A, theta float64,
+    v float64,
+    batteryWh, solarWhPerMin, etaDrive, raceDayMin float64,
+    // EV capability:
+    rWheel, Tmax, Pmax float64,
+    // Env/vehicle:
+    m, g, Crr, rho, Cd, A, theta float64,
+) (float64, bool) {
+    if v <= 0 || raceDayMin <= 0 || etaDrive <= 0 {
+        return 0, false
+    }
+    Preq := PowerRequired(v, m, g, Crr, rho, Cd, A, theta) // wheel W
+    if Preq <= 0 || math.IsNaN(Preq) || math.IsInf(Preq, 0) {
+        return 0, false
+    }
+    // Feasibility check
+    if WheelPowerEV(v, Tmax, Pmax, rWheel, etaDrive)+1e-9 < Preq {
+        return 0, false
+    }
 
-	solarWhPerMin, raceDayMin, etaDrive float64,
-	// EV capability:
-	rWheel, Tmax, Pmax float64,
-	// Environment/vehicle:
-) (distM float64, feasible bool) {
+    Tsec := raceDayMin * 60.0
+    EbattWheelJ := batteryWh * 3600.0 * etaDrive   // wheel J
+    PsolarWheel := solarWhPerMin * 60.0 * etaDrive // wheel W
 
-	if v <= 0 || raceDayMin <= 0 || etaDrive <= 0 {
-		return 0, false
-	}
-
-	// Wheel-side required power at speed v (use cos(theta) on rolling)
-	Preq := (Crr*m*g*math.Cos(theta)+m*g*math.Sin(theta))*v +
-		0.5*rho*Cd*A*v*v*v
-	if Preq <= 0 || math.IsNaN(Preq) || math.IsInf(Preq, 0) {
-		return 0, false
-	}
-
-	// Feasibility: can the car supply that wheel power at this speed?
-	PwheelMax := WheelPowerEV(v, Tmax, Pmax, rWheel, etaDrive)
-	if PwheelMax+1e-9 < Preq {
-		return 0, false
-	}
-
-	// Time window
-	Tsec := raceDayMin * 60.0
-
-	// Convert energy/power to wheel-side
-	EbattWheelJ := E * 3600.0 * etaDrive
-	PsolarWheelW := solarWhPerMin * 60.0 * etaDrive
-
-	// If solar alone covers demand, you can hold v for the full time
-	if Preq <= PsolarWheelW {
-		return v * Tsec, true
-	}
-
-	// Otherwise battery drains at (Preq - PsolarWheelW)
-	drain := Preq - PsolarWheelW
-	// if drain <= 0 {
-	// 	return v * Tsec, true
-	// }
-	tEnd := EbattWheelJ / drain
-	if tEnd < 0 {
-		tEnd = 0
-	}
-	if tEnd > Tsec {
-		tEnd = Tsec
-	}
-	return v * tEnd, true
+    // If solar alone covers demand, we can run full 8h
+    if Preq <= PsolarWheel {
+        return v * Tsec, true
+    }
+    drain := Preq - PsolarWheel
+    tEnd := EbattWheelJ / drain
+    if tEnd > Tsec {
+        tEnd = Tsec
+    }
+    if tEnd < 0 {
+        tEnd = 0
+    }
+    return v * tEnd, true
 }
 
 func TotalDistanceEV(
