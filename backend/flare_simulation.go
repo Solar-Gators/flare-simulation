@@ -101,11 +101,13 @@ func main() {
 		cruiseE := PowerRequired(bestV, m, g, Crr, rho, Cd, A, theta)
 		for j := 0; j < len(t.Segments); j++ {
 			if t.Segments[j].Radius != 0 {
-				totalLoss += int(netCurveLosses(m, A, Cd, Crr, t.Segments[j+1], bestV, 0.5, rho, g, cruiseE, 0.006, bestD, 0.8)) // MAKE A FUNCTION TO CHECK IF THE NEXT SEGMENT IS A CURVE
+				totalLoss += int(netCurveLosses(m, A, Cd, Crr, t.Segments[j+1], bestV, 0.5, rho, g, cruiseE, 0.006, 10, 0.8)) // MAKE A FUNCTION TO CHECK IF THE NEXT SEGMENT IS A CURVE
 				fmt.Println(totalLoss)
+				fmt.Print("total loss: ", totalLoss, "\n")
 			}
 		}
+		fmt.Println(numLaps)
+		battWithLosses -= float64(totalLoss)
 		WriteStepStatstoCSV(bestV, math.Round(bestD), battWithLosses)
-		totalLoss /= numLaps
 	}
 }
