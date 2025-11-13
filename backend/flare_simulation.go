@@ -77,15 +77,15 @@ func main() {
 	//csv file tracking distance and speed + battery
 	ClearStepStatstoCSV()
 	//course sweep
-	for n := 0; n < 67; n += 1 {
+	for n := 0; n < 7; n += 1 {
 		totalLoss := 0.0
 		numLaps := 0.0
 		bestV, bestD := 0.0, 0.0
+		//find best speed and distace (estimate)
 		for v := 2.0; v <= 40.0; v += 0.5 {
 			if d, ok := DistanceForSpeedEV(v, battWithLosses, solarWhPerMin, etaDrive, raceDayMin,
 				rWheel, Tmax, Pmax, m, g, Crr, rho, Cd, A, theta); ok && d > bestD {
 				bestD, bestV = d, v
-				numLaps = d / 5700.0
 			}
 		}
 		// refine around best
@@ -93,6 +93,7 @@ func main() {
 			if d, ok := DistanceForSpeedEV(v, battWithLosses, solarWhPerMin, etaDrive, raceDayMin,
 				rWheel, Tmax, Pmax, m, g, Crr, rho, Cd, A, theta); ok && d > bestD {
 				bestD, bestV = d, v
+				numLaps = d / 5070.0
 			}
 		}
 		fmt.Println("Distance: ", bestD)
