@@ -76,38 +76,40 @@ func main() {
 
 	//csv file tracking distance and speed + battery
 	ClearStepStatstoCSV()
-	for n := 0; n < 5; n += 1 {
-		totalLoss := 0
-		numLaps := 0
+	//course sweep
+	for n := 0; n < 67; n += 1 {
+		totalLoss := 0.0
+		numLaps := 0.0
 		bestV, bestD := 0.0, 0.0
 		for v := 2.0; v <= 40.0; v += 0.5 {
-			if d, ok := DistanceForSpeedEV(v, battWithLosses-(solarWhPerMin*480), solarWhPerMin, etaDrive, raceDayMin,
+			if d, ok := DistanceForSpeedEV(v, battWithLosses, solarWhPerMin, etaDrive, raceDayMin,
 				rWheel, Tmax, Pmax, m, g, Crr, rho, Cd, A, theta); ok && d > bestD {
 				bestD, bestV = d, v
-
-				// fmt.Print("distance: ", d, "\n")
-				// fmt.Print("velocity: ", v, "\n")
+				numLaps = d / 5700.0
 			}
 		}
 		// refine around best
 		for v := math.Max(0.5, bestV-2.0); v <= bestV+2.0; v += 0.1 {
-			if d, ok := DistanceForSpeedEV(v, battWithLosses-(solarWhPerMin*480), solarWhPerMin, etaDrive, raceDayMin,
+			if d, ok := DistanceForSpeedEV(v, battWithLosses, solarWhPerMin, etaDrive, raceDayMin,
 				rWheel, Tmax, Pmax, m, g, Crr, rho, Cd, A, theta); ok && d > bestD {
 				bestD, bestV = d, v
-				// fmt.Print("Distance: ", bestD)
-				// fmt.Print("velocity: ", bestV)
 			}
 		}
+		fmt.Println("Distance: ", bestD)
+		fmt.Println("velocity: ", bestV)
+		//find total losses
 		cruiseE := PowerRequired(bestV, m, g, Crr, rho, Cd, A, theta)
-		for j := 0; j < len(t.Segments); j++ {
+		for j := 0; j < len(t.Segments)-1; j++ {
 			if t.Segments[j].Radius != 0 {
-				totalLoss += int(netCurveLosses(m, A, Cd, Crr, t.Segments[j+1], bestV, 0.5, rho, g, cruiseE, 0.006, 10, 0.8)) // MAKE A FUNCTION TO CHECK IF THE NEXT SEGMENT IS A CURVE
+				totalLoss += float64(netCurveLosses(m, A, Cd, Crr, t.Segments[j+1], bestV, 0.5, rho, g, cruiseE, 0.006, 10, 0.8)) // MAKE A FUNCTION TO CHECK IF THE NEXT SEGMENT IS A CURVE
 				fmt.Println(totalLoss)
-				fmt.Print("total loss: ", totalLoss, "\n")
+				fmt.Println("total loss: ", totalLoss)
 			}
 		}
+
 		fmt.Println(numLaps)
-		battWithLosses -= float64(totalLoss)
+		fmt.Println("-----------------")
+		battWithLosses = fullBatt - totalLoss * numLaps
 		WriteStepStatstoCSV(bestV, math.Round(bestD), battWithLosses)
 	}
 }
