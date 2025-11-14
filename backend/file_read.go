@@ -24,5 +24,5 @@ func ClearStepStatstoCSV() {
 		return
 	}
 
-	w.WriteString("Time (s),Distance (m),Energy Left (Wh)\n")
+	w.WriteString("Velocity (m/s),Distance (m),BatteryWLosses (Wh)\n")
 }

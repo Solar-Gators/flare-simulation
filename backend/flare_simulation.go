@@ -78,7 +78,7 @@ func main() {
 	ClearStepStatstoCSV()
 	//course sweep
 	for n := 0; n < 7; n += 1 {
-		totalLoss := 0.0
+		lapLoss := 0.0
 		numLaps := 0.0
 		bestV, bestD := 0.0, 0.0
 		//find best speed and distace (estimate)
@@ -102,15 +102,15 @@ func main() {
 		cruiseE := PowerRequired(bestV, m, g, Crr, rho, Cd, A, theta)
 		for j := 0; j < len(t.Segments)-1; j++ {
 			if t.Segments[j].Radius != 0 {
-				totalLoss += float64(netCurveLosses(m, A, Cd, Crr, t.Segments[j+1], bestV, 0.5, rho, g, cruiseE, 0.006, 10, 0.8)) // MAKE A FUNCTION TO CHECK IF THE NEXT SEGMENT IS A CURVE
-				fmt.Println(totalLoss)
-				fmt.Println("total loss: ", totalLoss)
+				lapLoss += float64(netCurveLosses(m, A, Cd, Crr, t.Segments[j+1], bestV, 0.5, rho, g, cruiseE, 0.006, 10, 0.8)) // MAKE A FUNCTION TO CHECK IF THE NEXT SEGMENT IS A CURVE
+				fmt.Println(lapLoss)
+				fmt.Println("total loss: ", lapLoss)
 			}
 		}
 
 		fmt.Println(numLaps)
 		fmt.Println("-----------------")
-		battWithLosses = fullBatt - totalLoss * numLaps
+		battWithLosses = fullBatt - lapLoss * numLaps
 		WriteStepStatstoCSV(bestV, math.Round(bestD), battWithLosses)
 	}
 }
