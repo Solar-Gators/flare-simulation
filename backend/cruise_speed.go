@@ -11,8 +11,9 @@ func newTotalEnergy(solarYield float64, /* watt hours / minute */
 	return totalBattery
 }
 
-// PowerRequired returns tractive power needed at road speed v [m/s]
+// PowerRequired returns tractive power needed at road speed v [m/s] (in watts)
 // Include grade theta [rad]. If you want wind, pass v as air speed (v_ground - v_wind).
+//theta is elevation
 func PowerRequired(v, m, g, Crr, rho, Cd, A, theta float64) float64 {
 	return (Crr*m*g+m*g*math.Sin(theta))*v + 0.5*rho*Cd*A*v*v*v
 }
