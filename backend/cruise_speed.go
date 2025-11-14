@@ -90,7 +90,7 @@ func WheelPowerICE(
 	}
 
 	// Wheel and engine angular speeds
-	omegaWheel := v / rWheel                        // [rad/s]
+	omegaWheel := v / rWheel // [rad/s]
 	omegaEngine := omegaWheel * gearRatio * finalDrive
 	rpm := omegaEngine * 60.0 / (2.0 * math.Pi) // [RPM]
 
@@ -111,7 +111,6 @@ func WheelPowerICE(
 	}
 	return P_wheel
 }
-
 
 func CruiseSpeedEV(
 	m, g, Crr, rho, Cd, A float64,
@@ -167,6 +166,48 @@ func DistanceAtCruise(E, v, m, g, Crr, rho, Cd, A, theta float64) float64 {
 	return E / F
 }
 
+// DistanceForSpeedEV returns the distance (meters) you can cover at a given
+// ground speed v (m/s) over raceDayMin, using E (battery energy) and concurrent solar,
+// and whether that speed is feasible (power-wise).
+func DistanceForSpeedEV(
+    v float64,
+    batteryWh, solarWhPerMin, etaDrive, raceDayMin float64,
+    // EV capability:
+    rWheel, Tmax, Pmax float64,
+    // Env/vehicle:
+    m, g, Crr, rho, Cd, A, theta float64,
+) (float64, bool) {
+    if v <= 0 || raceDayMin <= 0 || etaDrive <= 0 {
+        return 0, false
+    }
+    Preq := PowerRequired(v, m, g, Crr, rho, Cd, A, theta) // wheel W
+    if Preq <= 0 || math.IsNaN(Preq) || math.IsInf(Preq, 0) {
+        return 0, false
+    }
+    // Feasibility check
+    if WheelPowerEV(v, Tmax, Pmax, rWheel, etaDrive)+1e-9 < Preq {
+        return 0, false
+    }
+
+    Tsec := raceDayMin * 60.0
+    EbattWheelJ := batteryWh * 3600.0 * etaDrive   // wheel J
+    PsolarWheel := solarWhPerMin * 60.0 * etaDrive // wheel W
+
+    // If solar alone covers demand, we can run full 8h
+    if Preq <= PsolarWheel {
+        return v * Tsec, true
+    }
+    drain := Preq - PsolarWheel
+    tEnd := EbattWheelJ / drain
+    if tEnd > Tsec {
+        tEnd = Tsec
+    }
+    if tEnd < 0 {
+        tEnd = 0
+    }
+    return v * tEnd, true
+}
+
 func TotalDistanceEV(
 	solarYieldWhPerMin, raceDayMin, batteryWh float64,
 	etaDrive float64,
@@ -181,5 +222,24 @@ func TotalDistanceEV(
 	}
 	EWh := newTotalEnergy(solarYieldWhPerMin, raceDayMin, batteryWh)
 	EJwheel := EWh * 3600.0 * etaDrive
-	return DistanceAtCruise(EJwheel, v /* no wind here */, m, g, Crr, rho, Cd, A, theta), true
+	return DistanceForSpeedEV(
+		EJwheel, v, m, g, Crr, rho, Cd, A, theta,
+		solarYieldWhPerMin, raceDayMin, etaDrive,
+		rWheel, Tmax, Pmax)
+}
+
+func TestTotalDistanceEV(
+	solarYieldWhPerMin, raceDayMin, batteryWh float64,
+	etaDrive float64,
+	// EV capability:
+	rWheel, Tmax, Pmax float64, // wheel radius (m), max motor torque (Nm), power cap (W)
+	// Environment/vehicle:
+	m, g, Crr, rho, Cd, A, theta, v float64, // VELOCITY IS IN m/s
+) (distM float64, ok bool) {
+	EWh := newTotalEnergy(solarYieldWhPerMin, raceDayMin, batteryWh)
+	EJwheel := EWh * 3600.0 * etaDrive
+	return DistanceForSpeedEV(
+		EJwheel, v, m, g, Crr, rho, Cd, A, theta,
+		solarYieldWhPerMin, raceDayMin, etaDrive,
+		rWheel, Tmax, Pmax)
 }

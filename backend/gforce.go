@@ -28,7 +28,7 @@ func calcCoastDistance(
 	//rRes: rolling resistance
 	//fArea: frontal area
 	//rho: air density
-	
+
 	//target speed obtained from CalcGforce func
 	targetSpeed := calcCurveSpeed(segment, gravity, gmax) //m/s
 	//squaring initial and end speeds
@@ -46,10 +46,13 @@ func calcCoastDistance(
 }
 
 // How much energy is saved by letting off the gas before a curve
-func coastConservation(cruiseEnergy, bottomEnergy, distance float64) float64 {
+func coastConservation(cruiseEnergy, bottomEnergy, distance, curveSpeed, cruiseSpeed float64) float64 {
+	//use time = distance / speed (because we need to energy * time (wh))
+	avgSpeed := math.Abs(curveSpeed - cruiseSpeed) / 2 // find average
+	time := distance / avgSpeed // in seconds
 	//bottomEnergy is arbitrary constant 
-	energyConserved := distance * (cruiseEnergy - bottomEnergy)
-	return energyConserved
+	energySavedWh := (cruiseEnergy - bottomEnergy) * time / 3600.0
+	return energySavedWh
 }
 
 // How much energy is used given a constant accel after a curve
@@ -116,6 +119,9 @@ func netCurveLosses(
 	gmax float64  ) float64 {
 	curveSpeed := calcCurveSpeed(upcomingCurve, gravity, gmax)
 	energyUsed := curveAccelEnergy(mass, fArea, aDrag, rRes, curveSpeed, cruiseSpeed, accel, rho, gravity)
-	energySaved := coastConservation(cruiseE, bottomE, distance)
-	return energySaved - energyUsed
+	energySaved := coastConservation(cruiseE, bottomE, distance, curveSpeed, cruiseSpeed)
+	return energyUsed - energySaved
 }
+
+
+
