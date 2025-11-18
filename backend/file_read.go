@@ -6,7 +6,7 @@ import (
 )
 
 func WriteStepStatstoCSV(time float64, distance float64, energyLeft float64) {
-	w, err := os.OpenFile("StepStats.csv", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	w, err := os.OpenFile("data/StepStats.csv", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return
 	}
@@ -18,7 +18,7 @@ func WriteStepStatstoCSV(time float64, distance float64, energyLeft float64) {
 }
 
 func ClearStepStatstoCSV() {
-	w, err := os.OpenFile("StepStats.csv", os.O_WRONLY|os.O_TRUNC, 0644)
+	w, err := os.OpenFile("data/StepStats.csv", os.O_WRONLY|os.O_TRUNC, 0644)
 
 	if err != nil {
 		return
