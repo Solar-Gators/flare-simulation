@@ -1,15 +1,93 @@
 package main
 
-import (
+import(
+	"fmt"
 	"math"
 )
 
-// Calculates the max speed of upcoming curve
 func calcCurveSpeed(segments Segment, gravity float64, gmax float64) float64 {
 	radius := segments.Radius
 	maxVelocity := math.Sqrt(gmax * radius * gravity)
 	return maxVelocity
 }
+
+// func newTotalEnergy(solarYield float64, /* watt hours / minute */
+// 	raceDayTime float64, /* in minutes */
+// 	batterySize float64 /* in watt hours */) float64 {
+// 	totalBattery := (solarYield * raceDayTime) + batterySize
+// 	return totalBattery
+// }
+
+func PowerRequired(v, m, g, Crr, rho, Cd, A, theta float64) float64 {
+	return (Crr*m*g+m*g*math.Sin(theta))*v + 0.5*rho*Cd*A*v*v*v
+}
+
+func WheelPowerEV(v, Tmax, Pmax, rWheel, eta float64) float64 {
+	// v: vehicle speed [m/s]
+	// Tmax: max wheel torque [N·m] (post-gearing)
+	// Pmax: electrical power cap at battery/inverter [W]
+	// rWheel: wheel effective radius [m]
+	// eta: battery→wheel efficiency [0..1]
+	// Returns: available wheel mechanical power [W]
+
+	if v <= 0 || rWheel <= 0 || eta <= 0 {
+		return 0
+	}
+	// Wheel angular speed [rad/s]
+	omegaWheel := v / rWheel
+
+	// Torque-limited wheel power (mechanical)
+	P_torque := Tmax * omegaWheel // [W]
+
+	// Power cap at the wheel after drivetrain losses
+	P_cap := eta * Pmax // [W]
+
+	if P_torque < P_cap {
+		return P_torque
+	}
+	return P_cap
+}
+
+func DistanceForSpeedEV(
+    v float64,
+    batteryWh, solarWhPerMin, etaDrive, raceDayMin float64,
+    // EV capability:
+    rWheel, Tmax, Pmax float64,
+    // Env/vehicle:
+    m, g, Crr, rho, Cd, A, theta float64,
+) (float64, bool) {
+    if v <= 0 || raceDayMin <= 0 || etaDrive <= 0 {
+        return 0, false
+    }
+    Preq := PowerRequired(v, m, g, Crr, rho, Cd, A, theta) // wheel W
+    if Preq <= 0 || math.IsNaN(Preq) || math.IsInf(Preq, 0) {
+        return 0, false
+    }
+    // Feasibility check
+    if WheelPowerEV(v, Tmax, Pmax, rWheel, etaDrive)+1e-9 < Preq {
+        return 0, false
+    }
+
+    Tsec := raceDayMin * 60.0
+    EbattWheelJ := batteryWh * 3600.0 * etaDrive   // wheel J
+    PsolarWheel := solarWhPerMin * 60.0 * etaDrive // wheel W
+
+    // If solar alone covers demand, we can run full 8h
+    if Preq <= PsolarWheel {
+        return v * Tsec, true
+    }
+    drain := Preq - PsolarWheel
+    tEnd := EbattWheelJ / drain
+    if tEnd > Tsec {
+        tEnd = Tsec
+    }
+    if tEnd < 0 {
+        tEnd = 0
+    }
+    return v * tEnd, true
+}
+
+// Calculates the max speed of upcoming curve
 
 //determines distance to let off accelerator before a curve to hit target speed
 //taking in the same params as CalcGForce to be passed into it
@@ -123,5 +201,49 @@ func netCurveLosses(
 	return energyUsed - energySaved
 }
 
+//unused for now...
+func simulateCoast(race_track Track){
+	//iterating through track and finding coast distance prior to a curve to hit target speed
+	//turn loop into function?
+	//implement coastConservation function?
+	//the car hits target speed and goes at target speed throughout curve (ends the curve at target speed)
+	// --> accelerate from current speed to coast speed 
+	// --> iterate through constant accelerate options to find optimal constant accel rate
 
+	for i := 0; i < len(race_track.Segments); i++ {
+		if ((i+1) == len(race_track.Segments)){
+			break
+		}
+		speed := 27.0 //in meters per second
+		upcomingCurve := race_track.Segments[i+1]
+		aDrag := 0.21 //Cd
+		rRes := 0.0015 //Crr
+		gravity := 9.81
+		gmax := 0.8
+		mass := 285.0
+		fArea := 0.456 //frontal area
+		rho := 1.225 //air density
+		bottomE := 0.006 //Watt hours per meter (wh/m)
+		accel := 0.5//m/s^2
+		if (upcomingCurve.Radius > 0) {
+			DistanceToCoast := calcCoastDistance(speed, upcomingCurve, aDrag, rRes, gravity, gmax, mass, fArea, rho)
+			if (DistanceToCoast < 0){
+				fmt.Println("Already below current speed")
+			} else if (DistanceToCoast > race_track.Segments[i].Length){
+				fmt.Println("Not enough track to slow down: ", DistanceToCoast, "meters needed")
+			} else {fmt.Println("Coast to target with: ", DistanceToCoast, "meters")
+
+			//theta (representing elevation) is temporarily 0
+			//Cruise energy used in wh/m
+			cruiseWhPerM := PowerRequired(speed, mass, gravity, rRes, rho, aDrag, fArea, 0) / speed / 3600.0 
+			fmt.Println("Cruise Energy in Wh/m: ", cruiseWhPerM)
+
+			//finds the net losses between conserved energy (from coasting) and used energy (from accel)
+			netE := netCurveLosses(mass, fArea, aDrag, rRes, upcomingCurve, speed, accel, rho, gravity, cruiseWhPerM, bottomE, DistanceToCoast, gmax)
+			fmt.Println("Net loss of energy is: ", netE, " wh")
+			}
+			fmt.Println("--------------------------------------------------")
+		} 
+	}
+}
 
