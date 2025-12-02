@@ -1,9 +1,15 @@
 package main
 
+/*
+OOP Section
+**Track HAS-A Segment**
+*/
+
 import (
 	"math"
 )
 
+//segement class with attributes
 type Segment struct {
 	Length float64
 	Radius float64
@@ -13,6 +19,7 @@ type Segment struct {
 	//appendSegment()
 }
 
+//calculate arc length if segment has radius
 func (s Segment) getArcLength() float64 {
 	if s.Radius != 0 {
 		return s.Radius * s.Angle * math.Pi / 180
@@ -21,12 +28,13 @@ func (s Segment) getArcLength() float64 {
 	}
 }
 
+//Has-A relationship
 type Track struct {
 	Segments []Segment
 	Length   float64
 }
 
-// WIP
+//more member functions
 func appendSegment(s Segment, t Track) {
 	t.Segments = append(t.Segments, s)
 }

@@ -1,10 +1,20 @@
 package main
 
+/*
+**Important Vars.**
+
+- Cd = track coeff
+- A = frontal area
+- Crr = Rolling Resistance
+
+*/
+
 import(
 	"fmt"
 	"math"
 )
 
+//speed going into curve and throughout it
 func calcCurveSpeed(segments Segment, gravity float64, gmax float64) float64 {
 	radius := segments.Radius
 	maxVelocity := math.Sqrt(gmax * radius * gravity)
@@ -18,18 +28,27 @@ func calcCurveSpeed(segments Segment, gravity float64, gmax float64) float64 {
 // 	return totalBattery
 // }
 
+
+
+//Power required to maintaining coasting speed
 func PowerRequired(v, m, g, Crr, rho, Cd, A, theta float64) float64 {
 	return (Crr*m*g+m*g*math.Sin(theta))*v + 0.5*rho*Cd*A*v*v*v
 }
 
-func WheelPowerEV(v, Tmax, Pmax, rWheel, eta float64) float64 {
-	// v: vehicle speed [m/s]
-	// Tmax: max wheel torque [N·m] (post-gearing)
-	// Pmax: electrical power cap at battery/inverter [W]
-	// rWheel: wheel effective radius [m]
-	// eta: battery→wheel efficiency [0..1]
-	// Returns: available wheel mechanical power [W]
+//Calculates wheel mechanical power
+//Useful for finding distance
+//At this speed, can the car even produce the wheel power required to overcome resistances?
+//Useful as a feasability check
 
+// v: vehicle speed [m/s]
+// Tmax: max wheel torque [N·m] (post-gearing)
+// Pmax: electrical power cap at battery/inverter [W]
+// rWheel: wheel effective radius [m]
+// eta: battery→wheel efficiency [0..1]
+// Returns: available wheel mechanical power [W]
+
+func WheelPowerEV(v, Tmax, Pmax, rWheel, eta float64) float64 {
+	
 	if v <= 0 || rWheel <= 0 || eta <= 0 {
 		return 0
 	}
@@ -48,6 +67,7 @@ func WheelPowerEV(v, Tmax, Pmax, rWheel, eta float64) float64 {
 	return P_cap
 }
 
+//
 func DistanceForSpeedEV(
     v float64,
     batteryWh, solarWhPerMin, etaDrive, raceDayMin float64,
@@ -123,6 +143,11 @@ func calcCoastDistance(
 	return coastDistance
 }
 
+/*
+Next funcs all connect with one another together 
+**Coast Conservation - Curve Accel Energy = Net Curve Losses**
+*/
+
 // How much energy is saved by letting off the gas before a curve
 func coastConservation(cruiseEnergy, bottomEnergy, distance, curveSpeed, cruiseSpeed float64) float64 {
 	//use time = distance / speed (because we need to energy * time (wh))
@@ -133,11 +158,7 @@ func coastConservation(cruiseEnergy, bottomEnergy, distance, curveSpeed, cruiseS
 	return energySavedWh
 }
 
-// How much energy is used given a constant accel after a curve
-// func curveAccelEnergy(cruiseSpeed float64, currentSpeed float64, accel float64, mass float64) float64 {
-// 	energyUsed := 0.5 * mass * ((math.Pow(cruiseSpeed, 2)) - (math.Pow(currentSpeed, 2)))
-// 	return energyUsed / 3600.0 //returns wh
-// }
+
 // curveAccelEnergy calculates the total energy (in Wh) required to accelerate
 // a vehicle from initSpeed to cruiseSpeed under constant accel,
 // including aerodynamic drag and rolling resistance losses.

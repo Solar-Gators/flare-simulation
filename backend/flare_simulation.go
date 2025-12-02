@@ -32,7 +32,7 @@ func main() {
 	/*solarYield := 0.0
 	maxSpeed := 50.0
 	maxGforce := 0.5 */
-	// battCharge := 100.0 
+	// battCharge := 100.0
 	//time 19.22 for day 1
 	straight_path := Segment{Length: 100}
 	straight_path1 := Segment{Length: 100}
@@ -46,8 +46,16 @@ func main() {
 	battWithLosses := fullBatt
 
 	//csv file tracking distance and speed + battery
+	//reset info arleady there
 	ClearStepStatstoCSV()
+
 	//course sweep
+
+	//first (OG Battery eg. 1000) -> iteration overshoot -> subtract high energy losses from orignal battery reserve (optimistic)
+	//second -> use the difference from the first iteration as the battery reserve (pessimistic) then subtract energy losses from OG battery (1000) information
+	//third -> use the difference of the last one (more optimistic) ...
+	//until speed converges at a certain speed
+
 	for n := 0; n < 7; n += 1 {
 		lapLoss := 0.0
 		numLaps := 0.0
@@ -59,7 +67,9 @@ func main() {
 				bestD, bestV = d, v
 			}
 		}
+
 		// refine around best
+		// This is a finer search in a narrow window around the previously found best speed
 		for v := math.Max(0.5, bestV-2.0); v <= bestV+2.0; v += 0.1 {
 			if d, ok := DistanceForSpeedEV(v, battWithLosses, solarWhPerMin, etaDrive, raceDayMin,
 				rWheel, Tmax, Pmax, m, g, Crr, rho, Cd, A, theta); ok && d > bestD {
@@ -67,9 +77,12 @@ func main() {
 				numLaps = d / 5070.0
 			}
 		}
+
 		fmt.Println("Distance: ", bestD)
 		fmt.Println("velocity: ", bestV)
+
 		//find total losses
+		//amt energy lost in lap
 		cruiseE := PowerRequired(bestV, m, g, Crr, rho, Cd, A, theta)
 		for j := 0; j < len(t.Segments)-1; j++ {
 			if t.Segments[j].Radius != 0 {
@@ -81,9 +94,7 @@ func main() {
 
 		fmt.Println(numLaps)
 		fmt.Println("-----------------")
-		battWithLosses = fullBatt - lapLoss * numLaps
+		battWithLosses = fullBatt - lapLoss*numLaps
 		WriteStepStatstoCSV(bestV, math.Round(bestD), battWithLosses)
 	}
 }
-
-
