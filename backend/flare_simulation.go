@@ -5,7 +5,7 @@ import (
 	"math"
 )
 
-func main() {
+func runSimulation() {
 
 	// --- Inputs from your data ---
 	const (
