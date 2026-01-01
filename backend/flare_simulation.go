@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func main() {
+func runSimulation() {
 
 	// --- Inputs from your data ---
 	const (
