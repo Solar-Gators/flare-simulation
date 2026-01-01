@@ -1,14 +1,20 @@
 package main
 
 import (
-	"encoding/json"
+	//used for decoding JSON into distanceRequest struct
+	//also for encoding struct back into JSON format for HTTP response
+	"encoding/json" 
+	//allows for original sim to be called via terminal using flag
 	"flag"
 	"fmt"
 	"log"
-	"net/http"
+	"net/http" //lets go program talk over web --> Receive requests and send responses
 )
 
 type distanceRequest struct {
+	//these are all struct tags
+	//tells go how struct maps to JSON for encoding and decoding
+
 	V             float64 `json:"v"`
 	BatteryWh     float64 `json:"batteryWh"`
 	SolarWhPerMin float64 `json:"solarWhPerMin"`
@@ -32,10 +38,12 @@ type distanceResponse struct {
 	Message   string  `json:"message,omitempty"`
 }
 
+//relocated main bc this is new entry point
+//sim now becomes function
 func main() {
-	mode := flag.String("mode", "server", "mode: server or simulate")
-	addr := flag.String("addr", ":8080", "server listen address")
-	flag.Parse()
+	mode := flag.String("mode", "server", "mode: server or simulate") //checking for user flags for sim for server
+	addr := flag.String("addr", ":8080", "server listen address") //checking flag to choose different network port in cases 8080 is in use
+	flag.Parse() //fills pointers (mode and addr) with values based on terminal inputs
 
 	if *mode == "simulate" {
 		runSimulation()
