@@ -63,8 +63,8 @@ func main() {
 }
 
 //is the HTTP handler
-//w --> is outgoing http response
-//r --> incoming http request. pointer to struct with everything client sent
+//w --> is outgoing http response (write)
+//r --> incoming http request. pointer to struct with everything client sent (read)
 func distanceHandler(w http.ResponseWriter, r *http.Request) {
 	addCORSHeaders(w)
 	//check to see if OPTIONS request then do nothing (this happens before API request)
@@ -72,14 +72,15 @@ func distanceHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
+	//handler is called again (two http requests are made)
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	var req distanceRequest
-	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
+	var req distanceRequest // holds parsed JSON
+	dec := json.NewDecoder(r.Body) //decode JSON and read
+	dec.DisallowUnknownFields() //decoding will fail if JSON has fields that are not valid
 	if err := dec.Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, distanceResponse{OK: false, Message: "invalid JSON body"})
 		return
@@ -91,7 +92,7 @@ func distanceHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, distanceResponse{OK: false, Message: "missing or invalid input values"})
 		return
 	}
-
+	//run sim if everything is valid
 	distance, ok := DistanceForSpeedEV(
 		req.V,
 		req.BatteryWh, req.SolarWhPerMin, req.EtaDrive, req.RaceDayMin,
@@ -110,6 +111,7 @@ func distanceHandler(w http.ResponseWriter, r *http.Request) {
 //CORS = Cross Origin Resource Sharing
 //Rule for controlling which websites can talk to which servers
 //OPTIONS: asks for permission "what am i allowed to do?" ex. "can i send POST", "can i send JSON"
+//POST --> client sends data and then server process it
 func addCORSHeaders(w http.ResponseWriter) {
 	w.Header().Set("Access-Control-Allow-Origin", "*") //any website can make request to this backend
 	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS") //the frontend can make POST (API call) and OPTIONS (CORS preflight)request
