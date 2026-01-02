@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
-set -euo pipefail
+#first line is shebang and it tells OS which program runs file
+set -euo pipefail #safety net in case of failure
 
+#curl allows for terminal to make same requests browsers and APIs make
+#-X HTTP method
+#-H http header
+#-d data/request body
 curl -X POST http://localhost:8080/distance \
   -H "Content-Type: application/json" \
   -d '{
