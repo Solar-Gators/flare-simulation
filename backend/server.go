@@ -45,22 +45,29 @@ func main() {
 	addr := flag.String("addr", ":8080", "server listen address") //checking flag to choose different network port in cases 8080 is in use
 	flag.Parse() //fills pointers (mode and addr) with values based on terminal inputs
 
+	//if flag is simulate run sim
 	if *mode == "simulate" {
 		runSimulation()
 		return
 	}
+	//empty router (router is meant to map url to handler)
+	mux := http.NewServeMux() //request router (empty --> no route to go), serve multiplexer -->takes http requests and routes it
+	mux.HandleFunc("/distance", distanceHandler) // handler that router directs oncoming requests
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/distance", distanceHandler)
+	log.Printf("listening on %s", *addr) //%s is replaced with dereferenced addr 
 
-	log.Printf("listening on %s", *addr)
+	//handles errors
 	if err := http.ListenAndServe(*addr, mux); err != nil {
 		log.Fatal(err)
 	}
 }
 
+//is the HTTP handler
+//w --> is outgoing http response
+//r --> incoming http request. pointer to struct with everything client sent
 func distanceHandler(w http.ResponseWriter, r *http.Request) {
 	addCORSHeaders(w)
+	//check to see if OPTIONS request then do nothing (this happens before API request)
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -99,11 +106,15 @@ func distanceHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, distanceResponse{DistanceM: distance, OK: true})
 }
 
+//adds specific http response headers
+//CORS = Cross Origin Resource Sharing
+//Rule for controlling which websites can talk to which servers
+//OPTIONS: asks for permission "what am i allowed to do?" ex. "can i send POST", "can i send JSON"
 func addCORSHeaders(w http.ResponseWriter) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*") //any website can make request to this backend
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS") //the frontend can make POST (API call) and OPTIONS (CORS preflight)request
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type") //frontend can send content type headers
+	w.Header().Set("Content-Type", "application/json") //response body is in JSON
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload distanceResponse) {
