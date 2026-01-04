@@ -7,7 +7,10 @@
      <!--Display on mobile devices-->
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Flare Distance Calculator</title>
+    <!--root = top level element-->
+    <!--controls background, text color, button color, etc-->
     <style>
+      
       :root {
         --bg-1: #f3efe8;
         --bg-2: #e6eff5;
@@ -17,11 +20,15 @@
         --panel: #fffaf3;
         --line: #e3d9cd;
       }
-
+/* *--> universal selector/ apply this rule to every element */
       * {
         box-sizing: border-box;
       }
-
+/* *--> remove default margin to remove unwanted whitespace, sets default color, default font, and then 
+layered background to make light glow in certain areas*/
+/*Sets how the page is filled, body turns into CSS grid container and horizantally and vertically centers content
+padding adds space between edge of screen and content
+*/
       body {
         margin: 0;
         color: var(--ink);
@@ -35,13 +42,17 @@
         place-items: center;
         padding: 32px 16px 48px;
       }
-
+/*.shell is a centered content container that 
+keeps the page from getting too wide and spaces its children nicely.*/
       .shell {
         width: min(980px, 100%);
         display: grid;
         gap: 24px;
       }
-
+/*
+These rules style the header’s title and 
+subtitle to be bold, readable, and responsive across screen sizes.
+*/
       header h1 {
         margin: 0 0 8px;
         letter-spacing: 0.02em;
