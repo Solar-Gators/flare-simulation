@@ -65,8 +65,7 @@ subtitle to be bold, readable, and responsive across screen sizes.
         color: var(--muted);
         font-size: 16px;
       }
-/*card that wraps around the forma nd result area
-*/
+/*card that wraps around the form and result area*/
       .panel {
         background: var(--panel);
         border: 1px solid var(--line);
@@ -75,13 +74,14 @@ subtitle to be bold, readable, and responsive across screen sizes.
         box-shadow: 0 24px 60px rgba(27, 29, 33, 0.08);
         animation: rise 520ms ease-out;
       }
-
+/*A responsive grid that arranges form fields neatly across the page.
+Layout automatically adjusts to different screen sizes*/
       .grid {
         display: grid;
         gap: 14px;
         grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
       }
-
+/*label styling*/
       label {
         display: grid;
         gap: 6px;
@@ -89,7 +89,7 @@ subtitle to be bold, readable, and responsive across screen sizes.
         color: var(--muted);
         letter-spacing: 0.02em;
       }
-
+/*input field styling*/
       input {
         border: 1px solid var(--line);
         border-radius: 10px;
@@ -98,12 +98,13 @@ subtitle to be bold, readable, and responsive across screen sizes.
         background: #ffffff;
         color: var(--ink);
       }
-
+/*things that happen when clicking into an input field*/
       input:focus {
         outline: 2px solid rgba(214, 74, 58, 0.35);
         border-color: var(--accent);
       }
 
+/*container for buttons and action control*/
       .actions {
         margin-top: 18px;
         display: flex;
@@ -112,6 +113,7 @@ subtitle to be bold, readable, and responsive across screen sizes.
         align-items: center;
       }
 
+/*primary action button*/
       button {
         background: var(--accent);
         color: white;
@@ -123,27 +125,28 @@ subtitle to be bold, readable, and responsive across screen sizes.
         cursor: pointer;
         transition: transform 120ms ease, box-shadow 120ms ease;
       }
-
+/*hovering over a button*/
       button:hover {
         transform: translateY(-1px);
         box-shadow: 0 10px 22px rgba(214, 74, 58, 0.3);
       }
-
+/*main text result*/
       .result {
         font-size: 18px;
         font-weight: 600;
       }
-
+/*secondary text*/
       .status {
         color: var(--muted);
         font-size: 14px;
       }
-
+/*highlight key value from result*/
       .result strong {
         color: var(--accent);
         font-size: 22px;
       }
-
+/*CSS animation (rise)
+keyframe - describes how an element should change over time during an animation*/
       @keyframes rise {
         from {
           opacity: 0;
