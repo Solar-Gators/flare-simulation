@@ -261,17 +261,21 @@ keyframe - describes how an element should change over time during an animation*
         "a",
         "theta",
       ];
-
+//converting user input to num
       function toNumber(value) {
         const num = Number.parseFloat(value);
         return Number.isFinite(num) ? num : null;
       }
 
+      //when form is submitted, run
+      //async bc a network request is made so everything else stays functional
+      //async marks function as pause capable because of await
       form.addEventListener("submit", async (event) => {
-        event.preventDefault();
+        event.preventDefault(); //Don’t do the browser’s default form behavior.
         status.textContent = "Calculating...";
 
         const payload = {};
+        //add to payload
         for (const field of fields) {
           const input = form.elements[field];
           const value = toNumber(input.value);
@@ -283,12 +287,16 @@ keyframe - describes how an element should change over time during an animation*
         }
 
         try {
+          //send POST request with JSON data and wait for server response and then store the response
+          //fetch starts network request
+          //await pauses this function
           const response = await fetch("http://localhost:8080/distance", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
           });
-
+          
+          //without await, data is promise
           const data = await response.json();
           if (!response.ok || !data.ok) {
             status.textContent = data.message || "Request failed.";
