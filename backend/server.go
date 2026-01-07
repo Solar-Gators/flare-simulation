@@ -139,6 +139,9 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	}
 }
 
+//http handler for track GET request
+//http request has for major parts: request line (http method, url, verison), headers 
+// (format for body, how long body is), blank line, and body (optional and is a stream)
 func trackHandler(w http.ResponseWriter, r *http.Request) {
 	addCORSHeaders(w)
 	if r.Method == http.MethodOptions {
@@ -154,6 +157,7 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+//setting tracks
 func defaultTrackSegments() []trackSegment {
 	return []trackSegment{
 		{Type: "straight", Length: 100},
