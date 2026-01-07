@@ -3,7 +3,7 @@ package main
 import (
 	//used for decoding JSON into distanceRequest struct
 	//also for encoding struct back into JSON format for HTTP response
-	"encoding/json" 
+	"encoding/json"
 	//allows for original sim to be called via terminal using flag
 	"flag"
 	"fmt"
@@ -38,12 +38,24 @@ type distanceResponse struct {
 	Message   string  `json:"message,omitempty"`
 }
 
-//relocated main bc this is new entry point
-//sim now becomes function
+type trackSegment struct {
+	Type      string  `json:"type"`
+	Length    float64 `json:"length,omitempty"`
+	Radius    float64 `json:"radius,omitempty"`
+	Angle     float64 `json:"angle,omitempty"`
+	Direction string  `json:"direction,omitempty"`
+}
+
+type trackResponse struct {
+	Segments []trackSegment `json:"segments"`
+}
+
+// relocated main bc this is new entry point
+// sim now becomes function
 func main() {
 	mode := flag.String("mode", "server", "mode: server or simulate") //checking for user flags for sim for server
-	addr := flag.String("addr", ":8080", "server listen address") //checking flag to choose different network port in cases 8080 is in use
-	flag.Parse() //fills pointers (mode and addr) with values based on terminal inputs
+	addr := flag.String("addr", ":8080", "server listen address")     //checking flag to choose different network port in cases 8080 is in use
+	flag.Parse()                                                      //fills pointers (mode and addr) with values based on terminal inputs
 
 	//if flag is simulate run sim
 	if *mode == "simulate" {
@@ -51,10 +63,11 @@ func main() {
 		return
 	}
 	//empty router (router is meant to map url to handler)
-	mux := http.NewServeMux() //request router (empty --> no route to go), serve multiplexer -->takes http requests and routes it
+	mux := http.NewServeMux()                    //request router (empty --> no route to go), serve multiplexer -->takes http requests and routes it
 	mux.HandleFunc("/distance", distanceHandler) // handler that router directs oncoming requests
+	mux.HandleFunc("/track", trackHandler)
 
-	log.Printf("listening on %s", *addr) //%s is replaced with dereferenced addr 
+	log.Printf("listening on %s", *addr) //%s is replaced with dereferenced addr
 
 	//handles errors
 	if err := http.ListenAndServe(*addr, mux); err != nil {
@@ -62,9 +75,9 @@ func main() {
 	}
 }
 
-//is the HTTP handler
-//w --> is outgoing http response (write)
-//r --> incoming http request. pointer to struct with everything client sent (read)
+// is the HTTP handler
+// w --> is outgoing http response (write)
+// r --> incoming http request. pointer to struct with everything client sent (read)
 func distanceHandler(w http.ResponseWriter, r *http.Request) {
 	addCORSHeaders(w)
 	//check to see if OPTIONS request then do nothing (this happens before API request)
@@ -78,9 +91,9 @@ func distanceHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req distanceRequest // holds parsed JSON
+	var req distanceRequest        // holds parsed JSON
 	dec := json.NewDecoder(r.Body) //decode JSON and read
-	dec.DisallowUnknownFields() //decoding will fail if JSON has fields that are not valid
+	dec.DisallowUnknownFields()    //decoding will fail if JSON has fields that are not valid
 	if err := dec.Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, distanceResponse{OK: false, Message: "invalid JSON body"})
 		return
@@ -107,21 +120,47 @@ func distanceHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, distanceResponse{DistanceM: distance, OK: true})
 }
 
-//adds specific http response headers
-//CORS = Cross Origin Resource Sharing
-//Rule for controlling which websites can talk to which servers
-//OPTIONS: asks for permission "what am i allowed to do?" ex. "can i send POST", "can i send JSON"
-//POST --> client sends data and then server process it
+// adds specific http response headers
+// CORS = Cross Origin Resource Sharing
+// Rule for controlling which websites can talk to which servers
+// OPTIONS: asks for permission "what am i allowed to do?" ex. "can i send POST", "can i send JSON"
+// POST --> client sends data and then server process it
 func addCORSHeaders(w http.ResponseWriter) {
-	w.Header().Set("Access-Control-Allow-Origin", "*") //any website can make request to this backend
-	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS") //the frontend can make POST (API call) and OPTIONS (CORS preflight)request
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type") //frontend can send content type headers
-	w.Header().Set("Content-Type", "application/json") //response body is in JSON
+	w.Header().Set("Access-Control-Allow-Origin", "*")                   //any website can make request to this backend
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS") //the frontend can make POST (API call) and OPTIONS (CORS preflight)request
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")       //frontend can send content type headers
+	w.Header().Set("Content-Type", "application/json")                   //response body is in JSON
 }
 
-func writeJSON(w http.ResponseWriter, status int, payload distanceResponse) {
+func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(payload); err != nil {
 		fmt.Fprint(w, `{"ok":false,"message":"failed to encode response"}`)
+	}
+}
+
+func trackHandler(w http.ResponseWriter, r *http.Request) {
+	addCORSHeaders(w)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	resp := trackResponse{Segments: defaultTrackSegments()}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func defaultTrackSegments() []trackSegment {
+	return []trackSegment{
+		{Type: "straight", Length: 100},
+		{Type: "straight", Length: 100},
+		{Type: "straight", Length: 100},
+		{Type: "curve", Radius: 90, Angle: 90, Direction: "right"},
+		{Type: "straight", Length: 100},
+		{Type: "curve", Radius: 90, Angle: 90, Direction: "right"},
 	}
 }
