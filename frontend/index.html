@@ -20,15 +20,15 @@
         --panel: #fffaf3;
         --line: #e3d9cd;
       }
-/* *--> universal selector/ apply this rule to every element */
+      /* *--> universal selector/ apply this rule to every element */
       * {
         box-sizing: border-box;
       }
-/* *--> remove default margin to remove unwanted whitespace, sets default color, default font, and then 
-layered background to make light glow in certain areas*/
-/*Sets how the page is filled, body turns into CSS grid container and horizantally and vertically centers content
-padding adds space between edge of screen and content
-*/
+      /* *--> remove default margin to remove unwanted whitespace, sets default color, default font, and then 
+      layered background to make light glow in certain areas*/
+      /*Sets how the page is filled, body turns into CSS grid container and horizantally and vertically centers content
+      padding adds space between edge of screen and content
+      */
       body {
         margin: 0;
         color: var(--ink);
@@ -42,17 +42,17 @@ padding adds space between edge of screen and content
         place-items: center;
         padding: 32px 16px 48px;
       }
-/*.shell is a centered content container that 
-keeps the page from getting too wide and spaces its children nicely.*/
+      /*.shell is a centered content container that 
+      keeps the page from getting too wide and spaces its children nicely.*/
       .shell {
         width: min(980px, 100%);
         display: grid;
         gap: 24px;
       }
-/*
-These rules style the header’s title and 
-subtitle to be bold, readable, and responsive across screen sizes.
-*/
+      /*
+      These rules style the header’s title and 
+      subtitle to be bold, readable, and responsive across screen sizes.
+      */
       header h1 {
         margin: 0 0 8px;
         letter-spacing: 0.02em;
@@ -65,7 +65,7 @@ subtitle to be bold, readable, and responsive across screen sizes.
         color: var(--muted);
         font-size: 16px;
       }
-/*card that wraps around the form and result area*/
+      /*card that wraps around the form and result area*/
       .panel {
         background: var(--panel);
         border: 1px solid var(--line);
@@ -74,11 +74,15 @@ subtitle to be bold, readable, and responsive across screen sizes.
         box-shadow: 0 24px 60px rgba(27, 29, 33, 0.08);
         animation: rise 520ms ease-out;
       }
-/*stack panels with spacing*/
+      /*stack panels with spacing*/
+
+      /*selects panel if it comes after another panel and addes spaces between panels
+      using adjacent sibling selector "+"*/
       .panel + .panel {
         margin-top: 18px;
       }
 
+      /*Creates a large, framed area for showing visual*/
       .track-frame {
         width: 100%;
         height: 360px;
@@ -87,19 +91,20 @@ subtitle to be bold, readable, and responsive across screen sizes.
         background: #fffdf8;
       }
 
+      /*Styles secondary info text related to the track.*/
       .track-meta {
         margin-top: 12px;
         color: var(--muted);
         font-size: 14px;
       }
-/*A responsive grid that arranges form fields neatly across the page.
-Layout automatically adjusts to different screen sizes*/
+      /*A responsive grid that arranges form fields neatly across the page.
+      Layout automatically adjusts to different screen sizes*/
       .grid {
         display: grid;
         gap: 14px;
         grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
       }
-/*label styling*/
+      /*label styling*/
       label {
         display: grid;
         gap: 6px;
@@ -107,7 +112,7 @@ Layout automatically adjusts to different screen sizes*/
         color: var(--muted);
         letter-spacing: 0.02em;
       }
-/*input field styling*/
+      /*input field styling*/
       input {
         border: 1px solid var(--line);
         border-radius: 10px;
@@ -116,13 +121,13 @@ Layout automatically adjusts to different screen sizes*/
         background: #ffffff;
         color: var(--ink);
       }
-/*things that happen when clicking into an input field*/
+      /*things that happen when clicking into an input field*/
       input:focus {
         outline: 2px solid rgba(214, 74, 58, 0.35);
         border-color: var(--accent);
       }
 
-/*container for buttons and action control*/
+      /*container for buttons and action control*/
       .actions {
         margin-top: 18px;
         display: flex;
@@ -131,7 +136,7 @@ Layout automatically adjusts to different screen sizes*/
         align-items: center;
       }
 
-/*primary action button*/
+      /*primary action button*/
       button {
         background: var(--accent);
         color: white;
@@ -143,28 +148,28 @@ Layout automatically adjusts to different screen sizes*/
         cursor: pointer;
         transition: transform 120ms ease, box-shadow 120ms ease;
       }
-/*hovering over a button*/
+      /*hovering over a button*/
       button:hover {
         transform: translateY(-1px);
         box-shadow: 0 10px 22px rgba(214, 74, 58, 0.3);
       }
-/*main text result*/
+      /*main text result*/
       .result {
         font-size: 18px;
         font-weight: 600;
       }
-/*secondary text*/
+      /*secondary text*/
       .status {
         color: var(--muted);
         font-size: 14px;
       }
-/*highlight key value from result*/
+      /*highlight key value from result*/
       .result strong {
         color: var(--accent);
         font-size: 22px;
       }
-/*CSS animation (rise)
-keyframe - describes how an element should change over time during an animation*/
+      /*CSS animation (rise)
+      keyframe - describes how an element should change over time during an animation*/
       @keyframes rise {
         from {
           opacity: 0;
@@ -255,9 +260,10 @@ keyframe - describes how an element should change over time during an animation*
           </div>
         </form>
       </section>
-
+      <!--panels are just styled containers-->
       <section class="panel">
         <h2>Track Preview</h2>
+        <!--SVG = Scalable Vector Graphing to draw track-->
         <svg class="track-frame" viewBox="0 0 600 360" role="img" aria-label="Track visualization">
           <path id="track-path" d="" fill="none" stroke="#d64a3a" stroke-width="6" stroke-linecap="round" />
         </svg>
@@ -290,12 +296,13 @@ keyframe - describes how an element should change over time during an animation*
         "a",
         "theta",
       ];
-//converting user input to num
+      //converting user input to num
       function toNumber(value) {
         const num = Number.parseFloat(value);
         return Number.isFinite(num) ? num : null;
       }
 
+      
       function renderTrack(segments) {
         let x = 0;
         let y = 0;
