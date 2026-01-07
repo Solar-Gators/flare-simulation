@@ -304,18 +304,19 @@
 
       
       function renderTrack(segments) {
+        //location
         let x = 0;
         let y = 0;
-        let heading = 0;
-        const points = [{ x, y }];
-        let d = `M ${x} ${y}`;
+        let heading = 0; //direction facing
+        const points = [{ x, y }]; //store points that have been visited
+        let d = `M ${x} ${y}`; //path string that is being built. M = move to (in SVG)
 
         for (const seg of segments) {
           if (seg.type === "straight") {
             const length = seg.length || 0;
             x += length * Math.cos(heading);
             y += length * Math.sin(heading);
-            d += ` L ${x} ${y}`;
+            d += ` L ${x} ${y}`; //draw line to new point
             points.push({ x, y });
             continue;
           }
@@ -326,7 +327,7 @@
             if (radius <= 0 || angleDeg === 0) {
               continue;
             }
-
+            //finds center of circle then rotates around the center to find the endpoint of arc
             const isRight = (seg.direction || "").toLowerCase() === "right";
             const delta = (Math.PI / 180) * (isRight ? angleDeg : -angleDeg);
             const normalX = isRight ? -Math.sin(heading) : Math.sin(heading);
@@ -355,6 +356,7 @@
           return;
         }
 
+        //helpful for bounding box to center and scale SVG
         let minX = points[0].x;
         let maxX = points[0].x;
         let minY = points[0].y;
@@ -365,7 +367,8 @@
           minY = Math.min(minY, pt.y);
           maxY = Math.max(maxY, pt.y);
         }
-
+        
+        //turning bounded box to SVG viewbox for box to fit nicely in frame
         const padding = 40;
         const width = Math.max(1, maxX - minX);
         const height = Math.max(1, maxY - minY);
@@ -426,7 +429,7 @@
             body: JSON.stringify(payload),
           });
           
-          //without await, data is promise
+          //without await, data is promise (data unavailable but will arrive in the future)
           const data = await response.json();
           if (!response.ok || !data.ok) {
             status.textContent = data.message || "Request failed.";
