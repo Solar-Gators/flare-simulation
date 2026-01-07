@@ -74,6 +74,24 @@ subtitle to be bold, readable, and responsive across screen sizes.
         box-shadow: 0 24px 60px rgba(27, 29, 33, 0.08);
         animation: rise 520ms ease-out;
       }
+/*stack panels with spacing*/
+      .panel + .panel {
+        margin-top: 18px;
+      }
+
+      .track-frame {
+        width: 100%;
+        height: 360px;
+        border-radius: 16px;
+        border: 1px solid var(--line);
+        background: #fffdf8;
+      }
+
+      .track-meta {
+        margin-top: 12px;
+        color: var(--muted);
+        font-size: 14px;
+      }
 /*A responsive grid that arranges form fields neatly across the page.
 Layout automatically adjusts to different screen sizes*/
       .grid {
@@ -237,12 +255,23 @@ keyframe - describes how an element should change over time during an animation*
           </div>
         </form>
       </section>
+
+      <section class="panel">
+        <h2>Track Preview</h2>
+        <svg class="track-frame" viewBox="0 0 600 360" role="img" aria-label="Track visualization">
+          <path id="track-path" d="" fill="none" stroke="#d64a3a" stroke-width="6" stroke-linecap="round" />
+        </svg>
+        <div class="track-meta" id="track-status">Loading track...</div>
+      </section>
     </div>
 
     <script>
       const form = document.getElementById("distance-form");
       const result = document.getElementById("result");
       const status = document.getElementById("status");
+      const trackPath = document.getElementById("track-path");
+      const trackStatus = document.getElementById("track-status");
+      const trackSvg = document.querySelector(".track-frame");
 
       const fields = [
         "v",
@@ -265,6 +294,100 @@ keyframe - describes how an element should change over time during an animation*
       function toNumber(value) {
         const num = Number.parseFloat(value);
         return Number.isFinite(num) ? num : null;
+      }
+
+      function renderTrack(segments) {
+        let x = 0;
+        let y = 0;
+        let heading = 0;
+        const points = [{ x, y }];
+        let d = `M ${x} ${y}`;
+
+        for (const seg of segments) {
+          if (seg.type === "straight") {
+            const length = seg.length || 0;
+            x += length * Math.cos(heading);
+            y += length * Math.sin(heading);
+            d += ` L ${x} ${y}`;
+            points.push({ x, y });
+            continue;
+          }
+
+          if (seg.type === "curve") {
+            const radius = seg.radius || 0;
+            const angleDeg = seg.angle || 0;
+            if (radius <= 0 || angleDeg === 0) {
+              continue;
+            }
+
+            const isRight = (seg.direction || "").toLowerCase() === "right";
+            const delta = (Math.PI / 180) * (isRight ? angleDeg : -angleDeg);
+            const normalX = isRight ? -Math.sin(heading) : Math.sin(heading);
+            const normalY = isRight ? Math.cos(heading) : -Math.cos(heading);
+            const centerX = x + radius * normalX;
+            const centerY = y + radius * normalY;
+            const dx = x - centerX;
+            const dy = y - centerY;
+            const cos = Math.cos(delta);
+            const sin = Math.sin(delta);
+            const endX = centerX + dx * cos - dy * sin;
+            const endY = centerY + dx * sin + dy * cos;
+            const largeArc = Math.abs(angleDeg) > 180 ? 1 : 0;
+            const sweep = isRight ? 1 : 0;
+
+            d += ` A ${radius} ${radius} 0 ${largeArc} ${sweep} ${endX} ${endY}`;
+            x = endX;
+            y = endY;
+            heading += delta;
+            points.push({ x, y });
+          }
+        }
+
+        if (points.length < 2) {
+          trackStatus.textContent = "Track data is empty.";
+          return;
+        }
+
+        let minX = points[0].x;
+        let maxX = points[0].x;
+        let minY = points[0].y;
+        let maxY = points[0].y;
+        for (const pt of points) {
+          minX = Math.min(minX, pt.x);
+          maxX = Math.max(maxX, pt.x);
+          minY = Math.min(minY, pt.y);
+          maxY = Math.max(maxY, pt.y);
+        }
+
+        const padding = 40;
+        const width = Math.max(1, maxX - minX);
+        const height = Math.max(1, maxY - minY);
+        const viewBox = [
+          minX - padding,
+          minY - padding,
+          width + padding * 2,
+          height + padding * 2,
+        ].join(" ");
+
+        trackPath.setAttribute("d", d);
+        if (trackSvg) {
+          trackSvg.setAttribute("viewBox", viewBox);
+        }
+        trackStatus.textContent = `Segments: ${segments.length}`;
+      }
+
+      async function loadTrack() {
+        try {
+          const response = await fetch("http://localhost:8080/track");
+          const data = await response.json();
+          if (!response.ok || !Array.isArray(data.segments)) {
+            trackStatus.textContent = "Failed to load track data.";
+            return;
+          }
+          renderTrack(data.segments);
+        } catch (error) {
+          trackStatus.textContent = "Unable to reach backend for track data.";
+        }
       }
 
       //when form is submitted, run
@@ -309,6 +432,8 @@ keyframe - describes how an element should change over time during an animation*
           status.textContent = "Network error. Is the server running?";
         }
       });
+
+      loadTrack();
     </script>
   </body>
 </html>
