@@ -182,19 +182,19 @@ func defaultTrackSegments() []trackSegment {
 		{Type: "straight", Length: 100},
 		{Type: "straight", Length: 100},
 		{Type: "straight", Length: 100},
-		{Type: "curve", Radius: 90, Angle: 90, Direction: "right"},
+		{Type: "curve", Radius: 45, Angle: 90, Direction: "right"},
 		{Type: "straight", Length: 100},
-		{Type: "curve", Radius: 90, Angle: 90, Direction: "right"},
+		{Type: "curve", Radius: 45, Angle: 90, Direction: "right"},
 		{Type: "straight", Length: 180},
-		{Type: "curve", Radius: 120, Angle: 60, Direction: "left"},
+		{Type: "curve", Radius: 60, Angle: 60, Direction: "left"},
 		{Type: "straight", Length: 140},
-		{Type: "curve", Radius: 75, Angle: 90, Direction: "right"},
+		{Type: "curve", Radius: 45, Angle: 90, Direction: "right"},
 		{Type: "straight", Length: 220},
-		{Type: "curve", Radius: 150, Angle: 45, Direction: "left"},
+		{Type: "curve", Radius: 65, Angle: 45, Direction: "left"},
 		{Type: "straight", Length: 160},
-		{Type: "curve", Radius: 60, Angle: 120, Direction: "right"},
+		{Type: "curve", Radius: 40, Angle: 120, Direction: "right"},
 		{Type: "straight", Length: 130},
-		{Type: "curve", Radius: 110, Angle: 75, Direction: "left"},
+		{Type: "curve", Radius: 55, Angle: 75, Direction: "left"},
 	}
 }
 
@@ -217,9 +217,10 @@ func trackTelemetryHandler(w http.ResponseWriter, r *http.Request) {
 // returns a list of points (x,y,speed,accel,distance)
 func buildTelemetry(segments []trackSegment) []telemetryPoint {
 	const (
-		stepM    = 10.0
+		stepM    = 5.0
 		gmax     = 0.8
 		muBrake  = 0.9
+		brakePct = 0.95
 		vMin     = 0.5
 		A        = 0.456
 		Cd       = 0.21
@@ -252,7 +253,7 @@ func buildTelemetry(segments []trackSegment) []telemetryPoint {
 			for remaining > 0 {
 				ds := math.Min(stepM, remaining) //going thru every stepM meters (10m)
 				var a float64
-				if nextCurveCap > 0 && v > nextCurveCap && remaining > 0 {
+				if nextCurveCap > 0 && v > nextCurveCap*brakePct && remaining > 0 {
 					a = coastDecel(v, vMin, m, g, Crr, rho, Cd, A, theta)
 					aBrake := (nextCurveCap*nextCurveCap - v*v) / (2 * remaining)
 					if aBrake < 0 {
