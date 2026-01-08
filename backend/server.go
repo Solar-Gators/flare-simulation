@@ -225,14 +225,24 @@ func buildTelemetry(segments []trackSegment) []telemetryPoint {
 	distance := 0.0
 	points = append(points, telemetryPoint{X: x, Y: y, Speed: v, Accel: 0, Distance: distance})
 
-	for _, seg := range segments {
+	for i, seg := range segments {
 		switch seg.Type {
 		//when we are dealing with a straight segment
 		case "straight":
+			nextCurveCap := 0.0
+			if i+1 < len(segments) && segments[i+1].Type == "curve" && segments[i+1].Radius > 0 {
+				nextCurveCap = calcCurveSpeed(Segment{Radius: segments[i+1].Radius}, g, gmax)
+			}
 			remaining := seg.Length
 			for remaining > 0 {
 				ds := math.Min(stepM, remaining) //going thru every stepM meters (10m)
 				a := accelAtSpeed(v, vMin, rWheel, Tmax, Pmax, etaDrive, m, g, Crr, rho, Cd, A, theta)
+				if nextCurveCap > 0 && v > nextCurveCap && remaining > 0 {
+					aBrake := (nextCurveCap*nextCurveCap - v*v) / (2 * remaining)
+					if aBrake < 0 {
+						a = math.Min(a, aBrake)
+					}
+				}
 				vNext := updateSpeed(v, a, ds)
 				//update position
 				x += ds * math.Cos(heading)
