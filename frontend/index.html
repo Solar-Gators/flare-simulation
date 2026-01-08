@@ -91,11 +91,35 @@
         background: #fffdf8;
       }
 
+      .track-layer path {
+        transition: stroke 160ms ease;
+      }
+
       /*Styles secondary info text related to the track.*/
       .track-meta {
         margin-top: 12px;
         color: var(--muted);
         font-size: 14px;
+      }
+
+      .tooltip {
+        position: fixed;
+        z-index: 10;
+        background: rgba(27, 29, 33, 0.92);
+        color: #ffffff;
+        padding: 8px 10px;
+        border-radius: 10px;
+        font-size: 12px;
+        pointer-events: none;
+        opacity: 0;
+        transform: translateY(-6px);
+        transition: opacity 120ms ease, transform 120ms ease;
+        white-space: nowrap;
+      }
+
+      .tooltip.visible {
+        opacity: 1;
+        transform: translateY(0);
       }
       /*A responsive grid that arranges form fields neatly across the page.
       Layout automatically adjusts to different screen sizes*/
@@ -265,9 +289,10 @@
         <h2>Track Preview</h2>
         <!--SVG = Scalable Vector Graphing to draw track-->
         <svg class="track-frame" viewBox="0 0 600 360" role="img" aria-label="Track visualization">
-          <path id="track-path" d="" fill="none" stroke="#d64a3a" stroke-width="6" stroke-linecap="round" />
+          <g class="track-layer" id="track-layer"></g>
         </svg>
         <div class="track-meta" id="track-status">Loading track...</div>
+        <div class="tooltip" id="track-tooltip"></div>
       </section>
     </div>
 
@@ -275,9 +300,10 @@
       const form = document.getElementById("distance-form");
       const result = document.getElementById("result");
       const status = document.getElementById("status");
-      const trackPath = document.getElementById("track-path");
+      const trackLayer = document.getElementById("track-layer");
       const trackStatus = document.getElementById("track-status");
       const trackSvg = document.querySelector(".track-frame");
+      const trackTooltip = document.getElementById("track-tooltip");
 
       const fields = [
         "v",
@@ -302,72 +328,40 @@
         return Number.isFinite(num) ? num : null;
       }
 
-      
-      function renderTrack(segments) {
-        //location
-        let x = 0;
-        let y = 0;
-        let heading = 0; //direction facing
-        const points = [{ x, y }]; //store points that have been visited
-        let d = `M ${x} ${y}`; //path string that is being built. M = move to (in SVG)
+      function speedToColor(speed, minSpeed, maxSpeed) {
+        const clamped = Math.max(minSpeed, Math.min(speed, maxSpeed));
+        const t = (clamped - minSpeed) / Math.max(1e-6, maxSpeed - minSpeed);
+        const hue = 210 - 210 * t;
+        return `hsl(${hue}, 80%, 48%)`;
+      }
 
-        for (const seg of segments) {
-          if (seg.type === "straight") {
-            const length = seg.length || 0;
-            x += length * Math.cos(heading);
-            y += length * Math.sin(heading);
-            d += ` L ${x} ${y}`; //draw line to new point
-            points.push({ x, y });
-            continue;
-          }
-
-          if (seg.type === "curve") {
-            const radius = seg.radius || 0;
-            const angleDeg = seg.angle || 0;
-            if (radius <= 0 || angleDeg === 0) {
-              continue;
-            }
-            //finds center of circle then rotates around the center to find the endpoint of arc
-            const isRight = (seg.direction || "").toLowerCase() === "right";
-            const delta = (Math.PI / 180) * (isRight ? angleDeg : -angleDeg);
-            const normalX = isRight ? -Math.sin(heading) : Math.sin(heading);
-            const normalY = isRight ? Math.cos(heading) : -Math.cos(heading);
-            const centerX = x + radius * normalX;
-            const centerY = y + radius * normalY;
-            const dx = x - centerX;
-            const dy = y - centerY;
-            const cos = Math.cos(delta);
-            const sin = Math.sin(delta);
-            const endX = centerX + dx * cos - dy * sin;
-            const endY = centerY + dx * sin + dy * cos;
-            const largeArc = Math.abs(angleDeg) > 180 ? 1 : 0;
-            const sweep = isRight ? 1 : 0;
-
-            d += ` A ${radius} ${radius} 0 ${largeArc} ${sweep} ${endX} ${endY}`;
-            x = endX;
-            y = endY;
-            heading += delta;
-            points.push({ x, y });
-          }
+      function clearTrackLayer() {
+        while (trackLayer.firstChild) {
+          trackLayer.removeChild(trackLayer.firstChild);
         }
+      }
 
-        if (points.length < 2) {
-          trackStatus.textContent = "Track data is empty.";
+      function renderTelemetry(points) {
+        if (!points.length) {
+          trackStatus.textContent = "Telemetry data is empty.";
           return;
         }
 
-        //helpful for bounding box to center and scale SVG
         let minX = points[0].x;
         let maxX = points[0].x;
         let minY = points[0].y;
         let maxY = points[0].y;
+        let minSpeed = points[0].speed;
+        let maxSpeed = points[0].speed;
         for (const pt of points) {
           minX = Math.min(minX, pt.x);
           maxX = Math.max(maxX, pt.x);
           minY = Math.min(minY, pt.y);
           maxY = Math.max(maxY, pt.y);
+          minSpeed = Math.min(minSpeed, pt.speed);
+          maxSpeed = Math.max(maxSpeed, pt.speed);
         }
-        
+
         //turning bounded box to SVG viewbox for box to fit nicely in frame
         const padding = 40;
         const width = Math.max(1, maxX - minX);
@@ -379,24 +373,60 @@
           height + padding * 2,
         ].join(" ");
 
-        trackPath.setAttribute("d", d);
         if (trackSvg) {
           trackSvg.setAttribute("viewBox", viewBox);
         }
-        trackStatus.textContent = `Segments: ${segments.length}`;
+
+        clearTrackLayer();
+        const strokeWidth = 6;
+        for (let i = 1; i < points.length; i += 1) {
+          const prev = points[i - 1];
+          const curr = points[i];
+          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          const d = `M ${prev.x} ${prev.y} L ${curr.x} ${curr.y}`;
+          path.setAttribute("d", d);
+          path.setAttribute("fill", "none");
+          path.setAttribute("stroke", speedToColor(curr.speed, minSpeed, maxSpeed));
+          path.setAttribute("stroke-width", strokeWidth);
+          path.setAttribute("stroke-linecap", "round");
+          path.dataset.speed = curr.speed.toFixed(2);
+          path.dataset.accel = curr.accel.toFixed(3);
+          path.dataset.distance = curr.distance.toFixed(1);
+          trackLayer.appendChild(path);
+        }
+
+        trackStatus.textContent = `Telemetry points: ${points.length}`;
+      }
+
+      function showTooltip(event) {
+        const target = event.target;
+        if (!(target instanceof SVGPathElement)) {
+          return;
+        }
+        const speed = target.dataset.speed || "--";
+        const accel = target.dataset.accel || "--";
+        const distance = target.dataset.distance || "--";
+        trackTooltip.innerHTML = `Speed: <strong>${speed}</strong> m/s<br/>Accel: ${accel} m/s²<br/>Dist: ${distance} m`;
+        trackTooltip.style.left = `${event.clientX + 12}px`;
+        trackTooltip.style.top = `${event.clientY + 12}px`;
+        trackTooltip.classList.add("visible");
+      }
+
+      function hideTooltip() {
+        trackTooltip.classList.remove("visible");
       }
 
       async function loadTrack() {
         try {
-          const response = await fetch("http://localhost:8080/track");
+          const response = await fetch("http://localhost:8080/track/telemetry");
           const data = await response.json();
-          if (!response.ok || !Array.isArray(data.segments)) {
-            trackStatus.textContent = "Failed to load track data.";
+          if (!response.ok || !Array.isArray(data.points)) {
+            trackStatus.textContent = "Failed to load track telemetry.";
             return;
           }
-          renderTrack(data.segments);
+          renderTelemetry(data.points);
         } catch (error) {
-          trackStatus.textContent = "Unable to reach backend for track data.";
+          trackStatus.textContent = "Unable to reach backend for track telemetry.";
         }
       }
 
@@ -442,6 +472,9 @@
           status.textContent = "Network error. Is the server running?";
         }
       });
+
+      trackLayer.addEventListener("mousemove", showTooltip);
+      trackLayer.addEventListener("mouseleave", hideTooltip);
 
       loadTrack();
     </script>
