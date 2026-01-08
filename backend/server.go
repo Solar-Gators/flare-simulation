@@ -205,6 +205,7 @@ func buildTelemetry(segments []trackSegment) []telemetryPoint {
 	const (
 		stepM    = 10.0
 		gmax     = 0.8
+		muBrake  = 0.9
 		vMin     = 0.5
 		A        = 0.456
 		Cd       = 0.21
@@ -240,7 +241,8 @@ func buildTelemetry(segments []trackSegment) []telemetryPoint {
 				if nextCurveCap > 0 && v > nextCurveCap && remaining > 0 {
 					aBrake := (nextCurveCap*nextCurveCap - v*v) / (2 * remaining)
 					if aBrake < 0 {
-						a = math.Min(a, aBrake)
+						maxBrake := -muBrake * g
+						a = math.Min(a, math.Max(aBrake, maxBrake))
 					}
 				}
 				vNext := updateSpeed(v, a, ds)
@@ -288,7 +290,13 @@ func buildTelemetry(segments []trackSegment) []telemetryPoint {
 				y = centerY + dx*sin + dy*cos
 				heading += delta
 				distance += ds
-				points = append(points, telemetryPoint{X: x, Y: y, Speed: v, Accel: 0, Distance: distance})
+				a := coastDecel(v, vMin, m, g, Crr, rho, Cd, A, theta)
+				vNext := updateSpeed(v, a, ds)
+				if vNext > vCap {
+					vNext = vCap
+				}
+				points = append(points, telemetryPoint{X: x, Y: y, Speed: vNext, Accel: a, Distance: distance})
+				v = vNext
 				remaining -= ds
 			}
 		}
@@ -334,4 +342,21 @@ func updateSpeed(v float64, a float64, ds float64) float64 {
 		return 0
 	}
 	return math.Sqrt(v2)
+}
+
+func coastDecel(
+	v float64,
+	vMin float64,
+	m float64,
+	g float64,
+	Crr float64,
+	rho float64,
+	Cd float64,
+	A float64,
+	theta float64,
+) float64 {
+	vEff := math.Max(v, vMin)
+	pRes := PowerRequired(v, m, g, Crr, rho, Cd, A, theta)
+	fRes := pRes / vEff
+	return -fRes / m
 }
