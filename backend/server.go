@@ -251,15 +251,18 @@ func buildTelemetry(segments []trackSegment) []telemetryPoint {
 			remaining := seg.Length
 			for remaining > 0 {
 				ds := math.Min(stepM, remaining) //going thru every stepM meters (10m)
-				a := accelAtSpeed(v, vMin, rWheel, Tmax, Pmax, etaDrive, m, g, Crr, rho, Cd, A, theta)
-				if optimalCruiseSpeed > 0 && v >= optimalCruiseSpeed {
-					a = math.Min(a, 0)
-				}
+				var a float64
 				if nextCurveCap > 0 && v > nextCurveCap && remaining > 0 {
+					a = coastDecel(v, vMin, m, g, Crr, rho, Cd, A, theta)
 					aBrake := (nextCurveCap*nextCurveCap - v*v) / (2 * remaining)
 					if aBrake < 0 {
 						maxBrake := -muBrake * g
 						a = math.Min(a, math.Max(aBrake, maxBrake))
+					}
+				} else {
+					a = accelAtSpeed(v, vMin, rWheel, Tmax, Pmax, etaDrive, m, g, Crr, rho, Cd, A, theta)
+					if optimalCruiseSpeed > 0 && v >= optimalCruiseSpeed {
+						a = math.Min(a, 0)
 					}
 				}
 				vNext := updateSpeed(v, a, ds)
