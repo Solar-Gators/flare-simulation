@@ -78,7 +78,7 @@ func main() {
 		runSimulation()
 		return
 	}
-
+	//find cruise speed
 	optimalCruiseSpeed = computeOptimalSpeed()
 	//empty router (router is meant to map url to handler)
 	mux := http.NewServeMux()                    //request router (empty --> no route to go), serve multiplexer -->takes http requests and routes it
@@ -246,6 +246,7 @@ func buildTelemetry(segments []trackSegment) []telemetryPoint {
 		//when we are dealing with a straight segment
 		case "straight":
 			nextCurveCap := 0.0
+			//if next segment is a curve find max curve speed
 			if i+1 < len(segments) && segments[i+1].Type == "curve" && segments[i+1].Radius > 0 {
 				nextCurveCap = calcCurveSpeed(Segment{Radius: segments[i+1].Radius}, g, gmax)
 			}
@@ -253,9 +254,11 @@ func buildTelemetry(segments []trackSegment) []telemetryPoint {
 			for remaining > 0 {
 				ds := math.Min(stepM, remaining) //going thru every stepM meters (10m)
 				var a float64
+				//if there is an upcoming curve and are faster than threshold, begin slowing
 				if nextCurveCap > 0 && v > nextCurveCap*brakePct && remaining > 0 {
-					a = coastDecel(v, vMin, m, g, Crr, rho, Cd, A, theta)
-					aBrake := (nextCurveCap*nextCurveCap - v*v) / (2 * remaining)
+					a = coastDecel(v, vMin, m, g, Crr, rho, Cd, A, theta) //negative acceleratoin
+					aBrake := (nextCurveCap*nextCurveCap - v*v) / (2 * remaining) //calculate braking decel needed
+					//if braking is needed, clamp it to what the brakes can do
 					if aBrake < 0 {
 						maxBrake := -muBrake * g
 						a = math.Min(a, math.Max(aBrake, maxBrake))
@@ -345,9 +348,9 @@ func accelAtSpeed(
 	A float64,
 	theta float64,
 ) float64 {
-	vEff := math.Max(v, vMin)                               //0.5
-	pAvail := WheelPowerEV(v, Tmax, Pmax, rWheel, etaDrive) // 0
-	fDrive := pAvail / vEff                                 // 0
+	vEff := math.Max(v, vMin)                              
+	pAvail := WheelPowerEV(v, Tmax, Pmax, rWheel, etaDrive) 
+	fDrive := pAvail / vEff                               
 	if v < vMin && rWheel > 0 {
 		fDrive = Tmax / rWheel
 	}
@@ -368,6 +371,7 @@ func updateSpeed(v float64, a float64, ds float64) float64 {
 	return math.Sqrt(v2)
 }
 
+//computers deceleratoin when no drive power
 func coastDecel(
 	v float64,
 	vMin float64,
@@ -385,6 +389,7 @@ func coastDecel(
 	return -fRes / m
 }
 
+//brought the function from flare_sim file to here ...
 func computeOptimalSpeed() float64 {
 	const (
 		A             = 0.456
