@@ -200,7 +200,7 @@ func trackTelemetryHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, telemetryResponse{Points: points})
 }
 
-//returns a list of points (x,y,speed,accel,distance)
+// returns a list of points (x,y,speed,accel,distance)
 func buildTelemetry(segments []trackSegment) []telemetryPoint {
 	const (
 		stepM    = 10.0
@@ -221,7 +221,7 @@ func buildTelemetry(segments []trackSegment) []telemetryPoint {
 
 	points := make([]telemetryPoint, 0, 64)
 	x, y, heading := 0.0, 0.0, 0.0
-	v := 0.0
+	v := 0.5
 	distance := 0.0
 	points = append(points, telemetryPoint{X: x, Y: y, Speed: v, Accel: 0, Distance: distance})
 
@@ -239,6 +239,7 @@ func buildTelemetry(segments []trackSegment) []telemetryPoint {
 				y += ds * math.Sin(heading)
 				distance += ds
 				points = append(points, telemetryPoint{X: x, Y: y, Speed: vNext, Accel: a, Distance: distance})
+				log.Printf("speed=%.2f accel=%.3f", v, a)
 				v = vNext
 				remaining -= ds
 			}
@@ -286,7 +287,7 @@ func buildTelemetry(segments []trackSegment) []telemetryPoint {
 	return points
 }
 
-//calculates accel at a given v
+// calculates accel at a given v
 func accelAtSpeed(
 	v float64,
 	vMin float64,
@@ -302,15 +303,18 @@ func accelAtSpeed(
 	A float64,
 	theta float64,
 ) float64 {
-	vEff := math.Max(v, vMin)
-	pAvail := WheelPowerEV(v, Tmax, Pmax, rWheel, etaDrive)
-	fDrive := pAvail / vEff
+	vEff := math.Max(v, vMin)                               //0.5
+	pAvail := WheelPowerEV(v, Tmax, Pmax, rWheel, etaDrive) // 0
+	fDrive := pAvail / vEff                                 // 0
+	if v < vMin && rWheel > 0 {
+		fDrive = Tmax / rWheel
+	}
 	pRes := PowerRequired(v, m, g, Crr, rho, Cd, A, theta)
 	fRes := pRes / vEff
 	return (fDrive - fRes) / m
 }
 
-//updates new speed given curent v and constant a
+// updates new speed given curent v and constant a
 func updateSpeed(v float64, a float64, ds float64) float64 {
 	if a == 0 {
 		return v
