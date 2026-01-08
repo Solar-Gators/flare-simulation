@@ -64,6 +64,8 @@ type telemetryResponse struct {
 	Points []telemetryPoint `json:"points"`
 }
 
+var optimalCruiseSpeed float64
+
 // relocated main bc this is new entry point
 // sim now becomes function
 func main() {
@@ -76,6 +78,8 @@ func main() {
 		runSimulation()
 		return
 	}
+
+	optimalCruiseSpeed = computeOptimalSpeed()
 	//empty router (router is meant to map url to handler)
 	mux := http.NewServeMux()                    //request router (empty --> no route to go), serve multiplexer -->takes http requests and routes it
 	mux.HandleFunc("/distance", distanceHandler) // handler that router directs oncoming requests
@@ -181,6 +185,16 @@ func defaultTrackSegments() []trackSegment {
 		{Type: "curve", Radius: 90, Angle: 90, Direction: "right"},
 		{Type: "straight", Length: 100},
 		{Type: "curve", Radius: 90, Angle: 90, Direction: "right"},
+		{Type: "straight", Length: 180},
+		{Type: "curve", Radius: 120, Angle: 60, Direction: "left"},
+		{Type: "straight", Length: 140},
+		{Type: "curve", Radius: 75, Angle: 90, Direction: "right"},
+		{Type: "straight", Length: 220},
+		{Type: "curve", Radius: 150, Angle: 45, Direction: "left"},
+		{Type: "straight", Length: 160},
+		{Type: "curve", Radius: 60, Angle: 120, Direction: "right"},
+		{Type: "straight", Length: 130},
+		{Type: "curve", Radius: 110, Angle: 75, Direction: "left"},
 	}
 }
 
@@ -238,6 +252,9 @@ func buildTelemetry(segments []trackSegment) []telemetryPoint {
 			for remaining > 0 {
 				ds := math.Min(stepM, remaining) //going thru every stepM meters (10m)
 				a := accelAtSpeed(v, vMin, rWheel, Tmax, Pmax, etaDrive, m, g, Crr, rho, Cd, A, theta)
+				if optimalCruiseSpeed > 0 && v >= optimalCruiseSpeed {
+					a = math.Min(a, 0)
+				}
 				if nextCurveCap > 0 && v > nextCurveCap && remaining > 0 {
 					aBrake := (nextCurveCap*nextCurveCap - v*v) / (2 * remaining)
 					if aBrake < 0 {
@@ -246,6 +263,9 @@ func buildTelemetry(segments []trackSegment) []telemetryPoint {
 					}
 				}
 				vNext := updateSpeed(v, a, ds)
+				if optimalCruiseSpeed > 0 && vNext > optimalCruiseSpeed {
+					vNext = optimalCruiseSpeed
+				}
 				//update position
 				x += ds * math.Cos(heading)
 				y += ds * math.Sin(heading)
@@ -359,4 +379,40 @@ func coastDecel(
 	pRes := PowerRequired(v, m, g, Crr, rho, Cd, A, theta)
 	fRes := pRes / vEff
 	return -fRes / m
+}
+
+func computeOptimalSpeed() float64 {
+	const (
+		A             = 0.456
+		Cd            = 0.21
+		rho           = 1.225
+		Crr           = 0.0015
+		m             = 285.0
+		g             = 9.81
+		theta         = 0.0
+		rWheel        = 0.2792
+		Tmax          = 45.0
+		Pmax          = 10000.0
+		batteryWh     = 5000.0
+		solarWhPerMin = 5.0
+		etaDrive      = 0.90
+		raceDayMin    = 480.0
+	)
+
+	bestV, bestD := 0.0, 0.0
+	for v := 2.0; v <= 40.0; v += 0.5 {
+		if d, ok := DistanceForSpeedEV(v, batteryWh, solarWhPerMin, etaDrive, raceDayMin,
+			rWheel, Tmax, Pmax, m, g, Crr, rho, Cd, A, theta); ok && d > bestD {
+			bestD, bestV = d, v
+		}
+	}
+
+	for v := math.Max(0.5, bestV-2.0); v <= bestV+2.0; v += 0.1 {
+		if d, ok := DistanceForSpeedEV(v, batteryWh, solarWhPerMin, etaDrive, raceDayMin,
+			rWheel, Tmax, Pmax, m, g, Crr, rho, Cd, A, theta); ok && d > bestD {
+			bestD, bestV = d, v
+		}
+	}
+
+	return bestV
 }
