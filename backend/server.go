@@ -8,7 +8,9 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"net/http" //lets go program talk over web --> Receive requests and send responses
+	"strings"
 )
 
 type distanceRequest struct {
@@ -50,6 +52,18 @@ type trackResponse struct {
 	Segments []trackSegment `json:"segments"`
 }
 
+type telemetryPoint struct {
+	X        float64 `json:"x"`
+	Y        float64 `json:"y"`
+	Speed    float64 `json:"speed"`
+	Accel    float64 `json:"accel"`
+	Distance float64 `json:"distance"`
+}
+
+type telemetryResponse struct {
+	Points []telemetryPoint `json:"points"`
+}
+
 // relocated main bc this is new entry point
 // sim now becomes function
 func main() {
@@ -66,6 +80,7 @@ func main() {
 	mux := http.NewServeMux()                    //request router (empty --> no route to go), serve multiplexer -->takes http requests and routes it
 	mux.HandleFunc("/distance", distanceHandler) // handler that router directs oncoming requests
 	mux.HandleFunc("/track", trackHandler)
+	mux.HandleFunc("/track/telemetry", trackTelemetryHandler)
 
 	log.Printf("listening on %s", *addr) //%s is replaced with dereferenced addr
 
@@ -139,8 +154,8 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	}
 }
 
-//http handler for track GET request
-//http request has for major parts: request line (http method, url, verison), headers 
+// http handler for track GET request
+// http request has for major parts: request line (http method, url, verison), headers
 // (format for body, how long body is), blank line, and body (optional and is a stream)
 func trackHandler(w http.ResponseWriter, r *http.Request) {
 	addCORSHeaders(w)
@@ -157,7 +172,7 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-//setting tracks
+// setting tracks
 func defaultTrackSegments() []trackSegment {
 	return []trackSegment{
 		{Type: "straight", Length: 100},
@@ -167,4 +182,136 @@ func defaultTrackSegments() []trackSegment {
 		{Type: "straight", Length: 100},
 		{Type: "curve", Radius: 90, Angle: 90, Direction: "right"},
 	}
+}
+
+func trackTelemetryHandler(w http.ResponseWriter, r *http.Request) {
+	addCORSHeaders(w)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	segments := defaultTrackSegments()
+	points := buildTelemetry(segments)
+	writeJSON(w, http.StatusOK, telemetryResponse{Points: points})
+}
+
+func buildTelemetry(segments []trackSegment) []telemetryPoint {
+	const (
+		stepM    = 10.0
+		gmax     = 0.8
+		vMin     = 0.5
+		A        = 0.456
+		Cd       = 0.21
+		rho      = 1.225
+		Crr      = 0.0015
+		m        = 285.0
+		g        = 9.81
+		theta    = 0.0
+		rWheel   = 0.2792
+		Tmax     = 45.0
+		Pmax     = 10000.0
+		etaDrive = 0.90
+	)
+
+	points := make([]telemetryPoint, 0, 64)
+	x, y, heading := 0.0, 0.0, 0.0
+	v := 0.0
+	distance := 0.0
+	points = append(points, telemetryPoint{X: x, Y: y, Speed: v, Accel: 0, Distance: distance})
+
+	for _, seg := range segments {
+		switch seg.Type {
+		case "straight":
+			remaining := seg.Length
+			for remaining > 0 {
+				ds := math.Min(stepM, remaining)
+				a := accelAtSpeed(v, vMin, rWheel, Tmax, Pmax, etaDrive, m, g, Crr, rho, Cd, A, theta)
+				vNext := updateSpeed(v, a, ds)
+				x += ds * math.Cos(heading)
+				y += ds * math.Sin(heading)
+				distance += ds
+				points = append(points, telemetryPoint{X: x, Y: y, Speed: vNext, Accel: a, Distance: distance})
+				v = vNext
+				remaining -= ds
+			}
+		case "curve":
+			if seg.Radius <= 0 || seg.Angle == 0 {
+				continue
+			}
+			vCap := calcCurveSpeed(Segment{Radius: seg.Radius}, g, gmax)
+			if v > vCap {
+				v = vCap
+			}
+			arcLength := seg.Radius * seg.Angle * math.Pi / 180.0
+			remaining := arcLength
+			isRight := strings.ToLower(seg.Direction) == "right"
+			for remaining > 0 {
+				ds := math.Min(stepM, remaining)
+				delta := ds / seg.Radius
+				if !isRight {
+					delta = -delta
+				}
+
+				normalX := -math.Sin(heading)
+				normalY := math.Cos(heading)
+				if !isRight {
+					normalX = math.Sin(heading)
+					normalY = -math.Cos(heading)
+				}
+				centerX := x + seg.Radius*normalX
+				centerY := y + seg.Radius*normalY
+				dx := x - centerX
+				dy := y - centerY
+				cos := math.Cos(delta)
+				sin := math.Sin(delta)
+				x = centerX + dx*cos - dy*sin
+				y = centerY + dx*sin + dy*cos
+				heading += delta
+				distance += ds
+				points = append(points, telemetryPoint{X: x, Y: y, Speed: v, Accel: 0, Distance: distance})
+				remaining -= ds
+			}
+		}
+	}
+
+	return points
+}
+
+func accelAtSpeed(
+	v float64,
+	vMin float64,
+	rWheel float64,
+	Tmax float64,
+	Pmax float64,
+	etaDrive float64,
+	m float64,
+	g float64,
+	Crr float64,
+	rho float64,
+	Cd float64,
+	A float64,
+	theta float64,
+) float64 {
+	vEff := math.Max(v, vMin)
+	pAvail := WheelPowerEV(v, Tmax, Pmax, rWheel, etaDrive)
+	fDrive := pAvail / vEff
+	pRes := PowerRequired(v, m, g, Crr, rho, Cd, A, theta)
+	fRes := pRes / vEff
+	return (fDrive - fRes) / m
+}
+
+func updateSpeed(v float64, a float64, ds float64) float64 {
+	if a == 0 {
+		return v
+	}
+	v2 := v*v + 2*a*ds
+	if v2 <= 0 {
+		return 0
+	}
+	return math.Sqrt(v2)
 }
