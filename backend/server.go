@@ -200,6 +200,7 @@ func trackTelemetryHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, telemetryResponse{Points: points})
 }
 
+//returns a list of points (x,y,speed,accel,distance)
 func buildTelemetry(segments []trackSegment) []telemetryPoint {
 	const (
 		stepM    = 10.0
@@ -226,12 +227,14 @@ func buildTelemetry(segments []trackSegment) []telemetryPoint {
 
 	for _, seg := range segments {
 		switch seg.Type {
+		//when we are dealing with a straight segment
 		case "straight":
 			remaining := seg.Length
 			for remaining > 0 {
-				ds := math.Min(stepM, remaining)
+				ds := math.Min(stepM, remaining) //going thru every stepM meters (10m)
 				a := accelAtSpeed(v, vMin, rWheel, Tmax, Pmax, etaDrive, m, g, Crr, rho, Cd, A, theta)
 				vNext := updateSpeed(v, a, ds)
+				//update position
 				x += ds * math.Cos(heading)
 				y += ds * math.Sin(heading)
 				distance += ds
@@ -243,13 +246,14 @@ func buildTelemetry(segments []trackSegment) []telemetryPoint {
 			if seg.Radius <= 0 || seg.Angle == 0 {
 				continue
 			}
-			vCap := calcCurveSpeed(Segment{Radius: seg.Radius}, g, gmax)
+			vCap := calcCurveSpeed(Segment{Radius: seg.Radius}, g, gmax) //compute max allowed curve speed
 			if v > vCap {
 				v = vCap
 			}
 			arcLength := seg.Radius * seg.Angle * math.Pi / 180.0
 			remaining := arcLength
 			isRight := strings.ToLower(seg.Direction) == "right"
+			//computes data points for every 10 m over curve segment
 			for remaining > 0 {
 				ds := math.Min(stepM, remaining)
 				delta := ds / seg.Radius
@@ -282,6 +286,7 @@ func buildTelemetry(segments []trackSegment) []telemetryPoint {
 	return points
 }
 
+//calculates accel at a given v
 func accelAtSpeed(
 	v float64,
 	vMin float64,
@@ -305,6 +310,7 @@ func accelAtSpeed(
 	return (fDrive - fRes) / m
 }
 
+//updates new speed given curent v and constant a
 func updateSpeed(v float64, a float64, ds float64) float64 {
 	if a == 0 {
 		return v
