@@ -101,7 +101,7 @@
         color: var(--muted);
         font-size: 14px;
       }
-
+      /*Styles secondary info text related to the track.*/
       .tooltip {
         position: fixed;
         z-index: 10;
@@ -328,6 +328,7 @@
         return Number.isFinite(num) ? num : null;
       }
 
+      //maps speed to a color
       function speedToColor(speed, minSpeed, maxSpeed) {
         const clamped = Math.max(minSpeed, Math.min(speed, maxSpeed));
         const t = (clamped - minSpeed) / Math.max(1e-6, maxSpeed - minSpeed);
@@ -341,6 +342,7 @@
         }
       }
 
+      //Draw track with SVG
       function renderTelemetry(points) {
         if (!points.length) {
           trackStatus.textContent = "Telemetry data is empty.";
@@ -398,6 +400,7 @@
         trackStatus.textContent = `Telemetry points: ${points.length}`;
       }
 
+      //hover feature
       function showTooltip(event) {
         const target = event.target;
         if (!(target instanceof SVGPathElement)) {
