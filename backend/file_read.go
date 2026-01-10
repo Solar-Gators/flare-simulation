@@ -17,12 +17,12 @@ func WriteStepStatstoCSV(time float64, distance float64, energyLeft float64) {
 	w.WriteString(Output)
 }
 
-func ClearStepStatstoCSV() {
+func ClearStepStatstoCSV(s string /*input 3 variables to be measured, in the format "Variable Name (units), ___, ___"*/) {
 	w, err := os.OpenFile("data/StepStats.csv", os.O_WRONLY|os.O_TRUNC, 0644)
 
 	if err != nil {
 		return
 	}
 
-	w.WriteString("Velocity (m/s),Distance (m),BatteryWLosses (Wh)\n")
+	w.WriteString(s + "\n")
 }

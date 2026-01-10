@@ -24,4 +24,4 @@ dist-ssr
 *.sw?
 
 # Ignore generated CSV data
-StepStats.csv
+# backend/data/StepStats.csv UNCOMMENT IF FILE ALREADY ON GITHUB
