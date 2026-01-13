@@ -10,7 +10,6 @@ import (
 	"log"
 	"math"
 	"net/http" //lets go program talk over web --> Receive requests and send responses
-	"strings"
 )
 
 type distanceRequest struct {
@@ -180,107 +179,113 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 func defaultTrackSegments() []trackSegment {
 	return []trackSegment{
 		{Type: "straight", Length: 637.1769912},
-		{Type: "curve", Radius: 52.05, Angle: 17.4, Direction: "right"},
-		{Type: "curve", Radius: 35.63, Angle: 19.79, Direction: "right"},
-		{Type: "curve", Radius: 147.60, Angle: 10.89, Direction: "right"},
-		{Type: "curve", Radius: 168.25, Angle: 7.45, Direction: "left"},
-		{Type: "curve", Radius: 38.23, Angle: 22.74, Direction: "left"},
-		{Type: "curve", Radius: 97.00, Angle: 8.72, Direction: "left"},
-		{Type: "curve", Radius: 39.14, Angle: 23.36, Direction: "left"},
-		{Type: "curve", Radius: 452.68, Angle: 12.76, Direction: "left"},
-		{Type: "curve", Radius: 94.05, Angle: 23.95, Direction: "right"},
-		{Type: "curve", Radius: 468.46, Angle: 16.92, Direction: "right"},
-		{Type: "curve", Radius: 24.64, Angle: 21.3, Direction: "right"},
-		{Type: "curve", Radius: 28.02, Angle: 23.08, Direction: "right"},
-		{Type: "curve", Radius: 19.55, Angle: 33.67, Direction: "right"},
-		{Type: "curve", Radius: 98.93, Angle: 14.11, Direction: "right"},
-		{Type: "curve", Radius: 292.02, Angle: 4.36, Direction: "right"},
-		{Type: "curve", Radius: 87.16, Angle: 13.53, Direction: "right"},
-		{Type: "curve", Radius: 90.25, Angle: 14.95, Direction: "right"},
-		{Type: "curve", Radius: 781.47, Angle: 19.1, Direction: "right"},
-		{Type: "curve", Radius: 245.16, Angle: 7.41, Direction: "right"},
-		{Type: "curve", Radius: 346.89, Angle: 9.15, Direction: "right"},
-		{Type: "curve", Radius: 2187.60, Angle: 1.93, Direction: "left"},
-		{Type: "curve", Radius: 435.43, Angle: 8.65, Direction: "left"},
-		{Type: "curve", Radius: 458.44, Angle: 10.82, Direction: "left"},
-		{Type: "curve", Radius: 469.46, Angle: 8.69, Direction: "right"},
-		{Type: "curve", Radius: 143.55, Angle: 19.78, Direction: "right"},
-		{Type: "curve", Radius: 169.41, Angle: 18.02, Direction: "right"},
-		{Type: "curve", Radius: 122.61, Angle: 17.61, Direction: "right"},
-		{Type: "curve", Radius: 296.16, Angle: 7.12, Direction: "right"},
-		{Type: "curve", Radius: 304.23, Angle: 9.23, Direction: "right"},
-		{Type: "curve", Radius: 1386.79, Angle: 1.86, Direction: "right"},
-		{Type: "curve", Radius: 26.40, Angle: 37.78, Direction: "right"},
-		{Type: "curve", Radius: 30.92, Angle: 25.04, Direction: "right"},
-		{Type: "curve", Radius: 81.61, Angle: 13.24, Direction: "right"},
-		{Type: "curve", Radius: 38.11, Angle: 27.45, Direction: "right"},
-		{Type: "curve", Radius: 295.71, Angle: 6.38, Direction: "right"},
-		{Type: "curve", Radius: 115.64, Angle: 15.07, Direction: "right"},
-		{Type: "curve", Radius: 502.76, Angle: 4.52, Direction: "right"},
-		{Type: "curve", Radius: 33.95, Angle: 33.89, Direction: "right"},
-		{Type: "curve", Radius: 78.01, Angle: 22.64, Direction: "right"},
-		{Type: "curve", Radius: 1464.16, Angle: 2.53, Direction: "right"},
-		{Type: "curve", Radius: 51.87, Angle: 30.49, Direction: "left"},
-		{Type: "curve", Radius: 52.33, Angle: 20.1, Direction: "left"},
-		{Type: "curve", Radius: 59.78, Angle: 17.54, Direction: "left"},
-		{Type: "curve", Radius: 99.54, Angle: 12.57, Direction: "left"},
-		{Type: "curve", Radius: 73.24, Angle: 19.01, Direction: "left"},
-		{Type: "curve", Radius: 145.47, Angle: 11.44, Direction: "left"},
-		{Type: "curve", Radius: 87.09, Angle: 17.92, Direction: "right"},
-		{Type: "curve", Radius: 122.09, Angle: 16.36, Direction: "right"},
-		{Type: "curve", Radius: 210.02, Angle: 8.94, Direction: "right"},
-		{Type: "curve", Radius: 392.55, Angle: 10.59, Direction: "right"},
-		{Type: "curve", Radius: 229.97, Angle: 9.27, Direction: "left"},
-		{Type: "curve", Radius: 140.90, Angle: 11.04, Direction: "left"},
-		{Type: "curve", Radius: 309.89, Angle: 7.59, Direction: "left"},
-		{Type: "curve", Radius: 57.28, Angle: 26.76, Direction: "left"},
-		{Type: "curve", Radius: 125.97, Angle: 16.22, Direction: "left"},
-		{Type: "curve", Radius: 13.68, Angle: 60.88, Direction: "left"},
-		{Type: "curve", Radius: 33.81, Angle: 35.95, Direction: "left"},
-		{Type: "curve", Radius: 267.78, Angle: 18.81, Direction: "left"},
-		{Type: "curve", Radius: 169.54, Angle: 11.02, Direction: "left"},
-		{Type: "curve", Radius: 653.73, Angle: 5.8, Direction: "left"},
-		{Type: "curve", Radius: 25.19, Angle: 31.79, Direction: "right"},
-		{Type: "curve", Radius: 411.26, Angle: 16.18, Direction: "right"},
-		{Type: "curve", Radius: 50.18, Angle: 13.52, Direction: "left"},
-		{Type: "curve", Radius: 626.89, Angle: 17.62, Direction: "left"},
-		{Type: "curve", Radius: 744.16, Angle: 3.19, Direction: "left"},
-		{Type: "curve", Radius: 366.05, Angle: 12.45, Direction: "left"},
-		{Type: "curve", Radius: 4230.52, Angle: 3.09, Direction: "left"},
-		{Type: "curve", Radius: 178.18, Angle: 10.94, Direction: "left"},
-		{Type: "curve", Radius: 636.14, Angle: 8.92, Direction: "left"},
-		{Type: "curve", Radius: 118.19, Angle: 17.64, Direction: "right"},
-		{Type: "curve", Radius: 111.32, Angle: 24.99, Direction: "right"},
-		{Type: "curve", Radius: 167.79, Angle: 14.52, Direction: "right"},
-		{Type: "curve", Radius: 210.49, Angle: 13.58, Direction: "right"},
-		{Type: "curve", Radius: 188.48, Angle: 15.14, Direction: "right"},
-		{Type: "curve", Radius: 292.09, Angle: 8.58, Direction: "right"},
-		{Type: "curve", Radius: 40.92, Angle: 24.65, Direction: "right"},
-		{Type: "curve", Radius: 66.83, Angle: 23.13, Direction: "right"},
-		{Type: "curve", Radius: 162.24, Angle: 12.81, Direction: "right"},
-		{Type: "curve", Radius: 379.05, Angle: 10.92, Direction: "right"},
-		{Type: "curve", Radius: 520.17, Angle: 6.33, Direction: "right"},
-		{Type: "curve", Radius: 47.32, Angle: 33.22, Direction: "right"},
-		{Type: "curve", Radius: 63.82, Angle: 28.76, Direction: "right"},
-		{Type: "curve", Radius: 48.87, Angle: 32.22, Direction: "right"},
-		{Type: "curve", Radius: 55.63, Angle: 24.13, Direction: "right"},
-		{Type: "curve", Radius: 61.25, Angle: 18.12, Direction: "right"},
-		{Type: "curve", Radius: 38.18, Angle: 26.56, Direction: "right"},
-		{Type: "curve", Radius: 133.64, Angle: 29.07, Direction: "right"},
-		{Type: "curve", Radius: 49.77, Angle: 33.99, Direction: "left"},
-		{Type: "curve", Radius: 52.21, Angle: 23.77, Direction: "left"},
-		{Type: "curve", Radius: 59.30, Angle: 27.99, Direction: "left"},
-		{Type: "curve", Radius: 76.80, Angle: 21.02, Direction: "left"},
-		{Type: "curve", Radius: 41.13, Angle: 33.61, Direction: "left"},
-		{Type: "curve", Radius: 52.02, Angle: 25.26, Direction: "left"},
-		{Type: "curve", Radius: 84.99, Angle: 37.86, Direction: "left"},
-		{Type: "curve", Radius: 78.85, Angle: 12.67, Direction: "right"},
-		{Type: "curve", Radius: 33.51, Angle: 25.63, Direction: "right"},
-		{Type: "curve", Radius: 307.07, Angle: 9.99, Direction: "right"},
-		{Type: "curve", Radius: 119.85, Angle: 9.51, Direction: "left"},
-		{Type: "curve", Radius: 146.78, Angle: 29.52, Direction: "left"},
-		{Type: "curve", Radius: 112.69, Angle: 16.17, Direction: "right"},
-		{Type: "curve", Radius: 121.26, Angle: 10.85, Direction: "right"},
+		{Type: "curve", Radius: 15.81415929, Angle: -17.4},
+		{Type: "curve", Radius: 12.30088496, Angle: -19.79},
+		{Type: "curve", Radius: 28.07079646, Angle: -10.89},
+		{Type: "curve", Radius: 21.88495575, Angle: 7.45},
+		{Type: "curve", Radius: 15.18584071, Angle: 22.74},
+		{Type: "curve", Radius: 14.7699115, Angle: 8.72},
+		{Type: "curve", Radius: 15.96460177, Angle: 23.36},
+		{Type: "curve", Radius: 0, Angle: 12.76},
+		{Type: "straight", Length: 100.9646018},
+		{Type: "curve", Radius: 39.30973451, Angle: -23.95},
+		{Type: "curve", Radius: 0, Angle: -16.92},
+		{Type: "straight", Length: 138.460177},
+		{Type: "curve", Radius: 9.159292035, Angle: -21.3},
+		{Type: "curve", Radius: 11.30088496, Angle: -23.08},
+		{Type: "curve", Radius: 11.49557522, Angle: -33.67},
+		{Type: "curve", Radius: 24.34513274, Angle: -14.11},
+		{Type: "curve", Radius: 22.22123894, Angle: -4.36},
+		{Type: "curve", Radius: 20.59292035, Angle: -13.53},
+		{Type: "curve", Radius: 23.53097345, Angle: -14.95},
+		{Type: "curve", Radius: 0, Angle: -19.1},
+		{Type: "straight", Length: 260.2920354},
+		{Type: "curve", Radius: 31.74336283, Angle: -7.41},
+		{Type: "curve", Radius: 55.48672566, Angle: -9.15},
+		{Type: "curve", Radius: 73.62831858, Angle: 1.93},
+		{Type: "curve", Radius: 65.7079646, Angle: 8.65},
+		{Type: "curve", Radius: 86.44247788, Angle: 10.82},
+		{Type: "curve", Radius: 71.31858407, Angle: -8.69},
+		{Type: "curve", Radius: 49.55752212, Angle: -19.78},
+		{Type: "curve", Radius: 53.30973451, Angle: -18.02},
+		{Type: "curve", Radius: 37.69026549, Angle: -17.61},
+		{Type: "curve", Radius: 36.83185841, Angle: -7.12},
+		{Type: "curve", Radius: 49.0619469, Angle: -9.23},
+		{Type: "curve", Radius: 45.02654867, Angle: -1.86},
+		{Type: "curve", Radius: 17.40707965, Angle: -37.78},
+		{Type: "curve", Radius: 13.51327434, Angle: -25.04},
+		{Type: "curve", Radius: 18.87610619, Angle: -13.24},
+		{Type: "curve", Radius: 18.27433628, Angle: -27.45},
+		{Type: "curve", Radius: 32.94690265, Angle: -6.38},
+		{Type: "curve", Radius: 30.43362832, Angle: -15.07},
+		{Type: "curve", Radius: 39.66371681, Angle: -4.52},
+		{Type: "curve", Radius: 20.11504425, Angle: -33.89},
+		{Type: "curve", Radius: 30.85840708, Angle: -22.64},
+		{Type: "curve", Radius: 64.62831858, Angle: -2.53},
+		{Type: "curve", Radius: 27.54867257, Angle: 30.49},
+		{Type: "curve", Radius: 18.34513274, Angle: 20.1},
+		{Type: "curve", Radius: 18.31858407, Angle: 17.54},
+		{Type: "curve", Radius: 21.84070796, Angle: 12.57},
+		{Type: "curve", Radius: 24.2920354, Angle: 19.01},
+		{Type: "curve", Radius: 29.01769912, Angle: 11.44},
+		{Type: "curve", Radius: 27.24778761, Angle: -17.92},
+		{Type: "curve", Radius: 34.92035398, Angle: -16.36},
+		{Type: "curve", Radius: 32.80530973, Angle: -8.94},
+		{Type: "curve", Radius: 72.51327434, Angle: -10.59},
+		{Type: "curve", Radius: 37.20353982, Angle: 9.27},
+		{Type: "curve", Radius: 27.15044248, Angle: 11.04},
+		{Type: "curve", Radius: 41.02654867, Angle: 7.59},
+		{Type: "curve", Radius: 26.7699115, Angle: 26.76},
+		{Type: "curve", Radius: 35.66371681, Angle: 16.22},
+		{Type: "curve", Radius: 14.52212389, Angle: 60.88},
+		{Type: "curve", Radius: 21.21238938, Angle: 35.95},
+		{Type: "curve", Radius: 87.87610619, Angle: 18.81},
+		{Type: "curve", Radius: 32.60176991, Angle: 11.02},
+		{Type: "curve", Radius: 66.18584071, Angle: 5.8},
+		{Type: "curve", Radius: 13.99115044, Angle: -31.79},
+		{Type: "curve", Radius: 0, Angle: -16.18},
+		{Type: "straight", Length: 116.1415929},
+		{Type: "curve", Radius: 11.84955752, Angle: 13.52},
+		{Type: "curve", Radius: 0, Angle: 17.62},
+		{Type: "straight", Length: 192.8318584},
+		{Type: "curve", Radius: 41.42477876, Angle: 3.19},
+		{Type: "curve", Radius: 79.50442478, Angle: 12.45},
+		{Type: "curve", Radius: 0, Angle: 3.09},
+		{Type: "straight", Length: 228.2654867},
+		{Type: "curve", Radius: 34.05309735, Angle: 10.94},
+		{Type: "curve", Radius: 98.88495575, Angle: 8.92},
+		{Type: "curve", Radius: 36.42477876, Angle: -17.64},
+		{Type: "curve", Radius: 48.53982301, Angle: -24.99},
+		{Type: "curve", Radius: 42.49557522, Angle: -14.52},
+		{Type: "curve", Radius: 49.87610619, Angle: -13.58},
+		{Type: "curve", Radius: 49.80530973, Angle: -15.14},
+		{Type: "curve", Radius: 43.71681416, Angle: -8.58},
+		{Type: "curve", Radius: 17.61946903, Angle: -24.65},
+		{Type: "curve", Radius: 26.98230088, Angle: -23.13},
+		{Type: "curve", Radius: 36.26548673, Angle: -12.81},
+		{Type: "curve", Radius: 72.16814159, Angle: -10.92},
+		{Type: "curve", Radius: 57.46017699, Angle: -6.33},
+		{Type: "curve", Radius: 27.45132743, Angle: -33.22},
+		{Type: "curve", Radius: 32.04424779, Angle: -28.76},
+		{Type: "curve", Radius: 27.46902655, Angle: -32.22},
+		{Type: "curve", Radius: 23.44247788, Angle: -24.13},
+		{Type: "curve", Radius: 19.38053097, Angle: -18.12},
+		{Type: "curve", Radius: 17.68141593, Angle: -26.56},
+		{Type: "curve", Radius: 67.75221239, Angle: -29.07},
+		{Type: "curve", Radius: 29.53097345, Angle: 33.99},
+		{Type: "curve", Radius: 21.66371681, Angle: 23.77},
+		{Type: "curve", Radius: 28.96460177, Angle: 27.99},
+		{Type: "curve", Radius: 28.15044248, Angle: 21.02},
+		{Type: "curve", Radius: 24.13274336, Angle: 33.61},
+		{Type: "curve", Radius: 22.91150442, Angle: 25.26},
+		{Type: "curve", Radius: 56.21238938, Angle: 37.86},
+		{Type: "curve", Radius: 17.45132743, Angle: -12.67},
+		{Type: "curve", Radius: 14.99115044, Angle: -25.63},
+		{Type: "curve", Radius: 53.59292035, Angle: -9.99},
+		{Type: "curve", Radius: 19.89380531, Angle: 9.51},
+		{Type: "curve", Radius: 75.7699115, Angle: 29.52},
+		{Type: "curve", Radius: 31.82300885, Angle: -16.17},
+		{Type: "curve", Radius: 22.95575221, Angle: -10.85},
 	}
 }
 
@@ -342,7 +347,7 @@ func buildTelemetry(segments []trackSegment) []telemetryPoint {
 				var a float64
 				//if there is an upcoming curve and are faster than threshold, begin slowing
 				if nextCurveCap > 0 && v > nextCurveCap*brakePct && remaining > 0 {
-					a = coastDecel(v, vMin, m, g, Crr, rho, Cd, A, theta) //negative acceleratoin
+					a = coastDecel(v, vMin, m, g, Crr, rho, Cd, A, theta)         //negative acceleratoin
 					aBrake := (nextCurveCap*nextCurveCap - v*v) / (2 * remaining) //calculate braking decel needed
 					//if braking is needed, clamp it to what the brakes can do
 					if aBrake < 0 {
@@ -369,17 +374,23 @@ func buildTelemetry(segments []trackSegment) []telemetryPoint {
 				remaining -= ds
 			}
 		case "curve":
-			if seg.Radius <= 0 || seg.Angle == 0 {
+			if seg.Angle == 0 {
+				continue
+			}
+			if seg.Radius == 0 {
+				heading += seg.Angle * math.Pi / 180.0
+				points = append(points, telemetryPoint{X: x, Y: y, Speed: v, Accel: 0, Distance: distance})
 				continue
 			}
 			vCap := calcCurveSpeed(Segment{Radius: seg.Radius}, g, gmax) //compute max allowed curve speed
 			if v > vCap {
 				v = vCap
 			}
-			arcLength := seg.Radius * seg.Angle * math.Pi / 180.0
+			angleDeg := seg.Angle
+			arcLength := seg.Radius * math.Abs(angleDeg) * math.Pi / 180.0
 			remaining := arcLength
-			isRight := strings.ToLower(seg.Direction) == "right"
-			//computes data points for every 10 m over curve segment
+			isRight := angleDeg < 0
+			//computes data points for each step along curve segment
 			for remaining > 0 {
 				ds := math.Min(stepM, remaining)
 				delta := ds / seg.Radius
@@ -434,9 +445,9 @@ func accelAtSpeed(
 	A float64,
 	theta float64,
 ) float64 {
-	vEff := math.Max(v, vMin)                              
-	pAvail := WheelPowerEV(v, Tmax, Pmax, rWheel, etaDrive) 
-	fDrive := pAvail / vEff                               
+	vEff := math.Max(v, vMin)
+	pAvail := WheelPowerEV(v, Tmax, Pmax, rWheel, etaDrive)
+	fDrive := pAvail / vEff
 	if v < vMin && rWheel > 0 {
 		fDrive = Tmax / rWheel
 	}
@@ -457,7 +468,7 @@ func updateSpeed(v float64, a float64, ds float64) float64 {
 	return math.Sqrt(v2)
 }
 
-//computers deceleratoin when no drive power
+// computers deceleratoin when no drive power
 func coastDecel(
 	v float64,
 	vMin float64,
@@ -475,7 +486,7 @@ func coastDecel(
 	return -fRes / m
 }
 
-//brought the function from flare_sim file to here ...
+// brought the function from flare_sim file to here ...
 func computeOptimalSpeed() float64 {
 	const (
 		A             = 0.456
