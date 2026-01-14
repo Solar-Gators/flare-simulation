@@ -1,0 +1,178 @@
+:root {
+  /*defining named colors that can be reused anywhere in CSS.*/
+  --bg-1: #f3efe8;
+  --bg-2: #e6eff5;
+  --ink: #1b1d21;
+  --muted: #5c6670;
+  --accent: #d64a3a;
+  --panel: #fffaf3;
+  --line: #e3d9cd;
+}
+
+/*When I set a width or height, include padding and border inside that size.*/
+* {
+  box-sizing: border-box;
+}
+/*meaning everything visible on the page inherits from or sits inside this styling*/
+body {
+  margin: 0;
+  color: var(--ink);
+  font-family: "Avenir Next", "Avenir", "Gill Sans", "Calibri", "Trebuchet MS", sans-serif;
+  background:
+    radial-gradient(800px 500px at 10% 0%, #f9f2e9 0%, rgba(249, 242, 233, 0) 70%),
+    radial-gradient(700px 600px at 90% 20%, #e6f1f8 0%, rgba(230, 241, 248, 0) 65%),
+    linear-gradient(135deg, var(--bg-1), var(--bg-2));
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px 16px 48px;
+}
+
+.shell {
+  width: min(980px, 100%);
+  display: grid;
+  gap: 24px;
+}
+
+header h1 {
+  margin: 0 0 8px;
+  letter-spacing: 0.02em;
+  font-weight: 700;
+  font-size: clamp(28px, 3.2vw, 40px);
+}
+
+header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 16px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 22px;
+  box-shadow: 0 24px 60px rgba(27, 29, 33, 0.08);
+  animation: rise 520ms ease-out;
+}
+
+.grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+input {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 15px;
+  background: #ffffff;
+  color: var(--ink);
+}
+
+input:focus {
+  outline: 2px solid rgba(214, 74, 58, 0.35);
+  border-color: var(--accent);
+}
+
+.actions {
+  margin-top: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+button {
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 999px;
+  padding: 12px 20px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(214, 74, 58, 0.3);
+}
+
+.result {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.status {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.result strong {
+  color: var(--accent);
+  font-size: 22px;
+}
+
+.track-frame {
+  width: 100%;
+  height: 360px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: #fffdf8;
+}
+
+.track-layer path {
+  transition: stroke 160ms ease;
+}
+
+.track-meta {
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 10;
+  background: rgba(27, 29, 33, 0.92);
+  color: #ffffff;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity 120ms ease, transform 120ms ease;
+  white-space: nowrap;
+}
+
+.tooltip.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
