@@ -300,6 +300,12 @@ func trackTelemetryHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // returns a list of points (x,y,speed,accel,distance)
+//no more speed "snap" in curves as in instead of setting v to the V capacity
+// the V is now ramp towards the cap given acceleration limits
+//++ included friction-circle limit bc in curves lateral acceleration uses grip which reduces how much longitudinal accel/brake you can apply
+//we have target cruise speed to prevent the car from accelerating forever if V is below we accelerate and if above we brake
+//fixed our issue of V approaching and reaching 0 bc of curves by removing continuous coasting decel curves and replacing by controlled approach to target curve speed
+//we essentially established a baseline for the optimal speed around curve instead of always taking foot off gas when approaching curve.
 func buildTelemetry(segments []trackSegment) []telemetryPoint {
 	const (
 		stepM    = 1.0
