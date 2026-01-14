@@ -7,7 +7,6 @@ cd "${ROOT_DIR}/frontend"
 
 PORT="${PORT:-5173}"
 
-echo "Serving frontend at http://localhost:${PORT}"
+echo "Starting Vite dev server at http://localhost:${PORT}"
 echo "Press Ctrl+C to stop."
-open "http://localhost:${PORT}"
-python3 -m http.server "${PORT}"
+npm run dev -- --host --port "${PORT}" --open

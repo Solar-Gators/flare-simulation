@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="en">
+  <head>
+
+     <!--Character encoding-->
+    <meta charset="utf-8" />
+     <!--Display on mobile devices-->
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Flare Distance Calculator</title>
+    <!--root = top level element-->
+    <!--controls background, text color, button color, etc-->
+    <style>
+      
+      :root {
+        --bg-1: #f3efe8;
+        --bg-2: #e6eff5;
+        --ink: #1b1d21;
+        --muted: #5c6670;
+        --accent: #d64a3a;
+        --panel: #fffaf3;
+        --line: #e3d9cd;
+      }
+      /* *--> universal selector/ apply this rule to every element */
+      * {
+        box-sizing: border-box;
+      }
+      /* *--> remove default margin to remove unwanted whitespace, sets default color, default font, and then 
+      layered background to make light glow in certain areas*/
+      /*Sets how the page is filled, body turns into CSS grid container and horizantally and vertically centers content
+      padding adds space between edge of screen and content
+      */
+      body {
+        margin: 0;
+        color: var(--ink);
+        font-family: "Avenir Next", "Avenir", "Gill Sans", "Calibri", "Trebuchet MS", sans-serif;
+        background:
+          radial-gradient(800px 500px at 10% 0%, #f9f2e9 0%, rgba(249, 242, 233, 0) 70%),
+          radial-gradient(700px 600px at 90% 20%, #e6f1f8 0%, rgba(230, 241, 248, 0) 65%),
+          linear-gradient(135deg, var(--bg-1), var(--bg-2));
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 32px 16px 48px;
+      }
+      /*.shell is a centered content container that 
+      keeps the page from getting too wide and spaces its children nicely.*/
+      .shell {
+        width: min(980px, 100%);
+        display: grid;
+        gap: 24px;
+      }
+      /*
+      These rules style the header’s title and 
+      subtitle to be bold, readable, and responsive across screen sizes.
+      */
+      header h1 {
+        margin: 0 0 8px;
+        letter-spacing: 0.02em;
+        font-weight: 700;
+        font-size: clamp(28px, 3.2vw, 40px);
+      }
+
+      header p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 16px;
+      }
+      /*card that wraps around the form and result area*/
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        padding: 22px;
+        box-shadow: 0 24px 60px rgba(27, 29, 33, 0.08);
+        animation: rise 520ms ease-out;
+      }
+      /*stack panels with spacing*/
+
+      /*selects panel if it comes after another panel and addes spaces between panels
+      using adjacent sibling selector "+"*/
+      .panel + .panel {
+        margin-top: 18px;
+      }
+
+      /*Creates a large, framed area for showing visual*/
+      .track-frame {
+        width: 100%;
+        height: 360px;
+        border-radius: 16px;
+        border: 1px solid var(--line);
+        background: #fffdf8;
+      }
+
+      .track-layer path {
+        transition: stroke 160ms ease;
+      }
+
+      /*Styles secondary info text related to the track.*/
+      .track-meta {
+        margin-top: 12px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      /*Styles secondary info text related to the track.*/
+      .tooltip {
+        position: fixed;
+        z-index: 10;
+        background: rgba(27, 29, 33, 0.92);
+        color: #ffffff;
+        padding: 8px 10px;
+        border-radius: 10px;
+        font-size: 12px;
+        pointer-events: none;
+        opacity: 0;
+        transform: translateY(-6px);
+        transition: opacity 120ms ease, transform 120ms ease;
+        white-space: nowrap;
+      }
+
+      .tooltip.visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      /*A responsive grid that arranges form fields neatly across the page.
+      Layout automatically adjusts to different screen sizes*/
+      .grid {
+        display: grid;
+        gap: 14px;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      }
+      /*label styling*/
+      label {
+        display: grid;
+        gap: 6px;
+        font-size: 13px;
+        color: var(--muted);
+        letter-spacing: 0.02em;
+      }
+      /*input field styling*/
+      input {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-size: 15px;
+        background: #ffffff;
+        color: var(--ink);
+      }
+      /*things that happen when clicking into an input field*/
+      input:focus {
+        outline: 2px solid rgba(214, 74, 58, 0.35);
+        border-color: var(--accent);
+      }
+
+      /*container for buttons and action control*/
+      .actions {
+        margin-top: 18px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+      }
+
+      /*primary action button*/
+      button {
+        background: var(--accent);
+        color: white;
+        border: none;
+        border-radius: 999px;
+        padding: 12px 20px;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+        cursor: pointer;
+        transition: transform 120ms ease, box-shadow 120ms ease;
+      }
+      /*hovering over a button*/
+      button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 10px 22px rgba(214, 74, 58, 0.3);
+      }
+      /*main text result*/
+      .result {
+        font-size: 18px;
+        font-weight: 600;
+      }
+      /*secondary text*/
+      .status {
+        color: var(--muted);
+        font-size: 14px;
+      }
+      /*highlight key value from result*/
+      .result strong {
+        color: var(--accent);
+        font-size: 22px;
+      }
+      /*CSS animation (rise)
+      keyframe - describes how an element should change over time during an animation*/
+      @keyframes rise {
+        from {
+          opacity: 0;
+          transform: translateY(12px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <header>
+        <h1>Flare Distance Calculator</h1>
+        <p>Enter your simulation values and fetch the predicted distance.</p>
+      </header>
+
+      <section class="panel">
+        <form id="distance-form">
+          <div class="grid">
+            <label>
+              v (m/s)
+              <input type="number" step="0.1" name="v" value="20" />
+            </label>
+            <label>
+              batteryWh
+              <input type="number" step="1" name="batteryWh" value="5000" />
+            </label>
+            <label>
+              solarWhPerMin
+              <input type="number" step="0.1" name="solarWhPerMin" value="5" />
+            </label>
+            <label>
+              etaDrive
+              <input type="number" step="0.01" name="etaDrive" value="0.9" />
+            </label>
+            <label>
+              raceDayMin
+              <input type="number" step="1" name="raceDayMin" value="480" />
+            </label>
+            <label>
+              rWheel (m)
+              <input type="number" step="0.0001" name="rWheel" value="0.2792" />
+            </label>
+            <label>
+              tMax (N·m)
+              <input type="number" step="0.1" name="tMax" value="45" />
+            </label>
+            <label>
+              pMax (W)
+              <input type="number" step="1" name="pMax" value="10000" />
+            </label>
+            <label>
+              m (kg)
+              <input type="number" step="0.1" name="m" value="285" />
+            </label>
+            <label>
+              g (m/s^2)
+              <input type="number" step="0.01" name="g" value="9.81" />
+            </label>
+            <label>
+              cRr
+              <input type="number" step="0.0001" name="cRr" value="0.0015" />
+            </label>
+            <label>
+              rho
+              <input type="number" step="0.001" name="rho" value="1.225" />
+            </label>
+            <label>
+              cD
+              <input type="number" step="0.01" name="cD" value="0.21" />
+            </label>
+            <label>
+              a (m^2)
+              <input type="number" step="0.001" name="a" value="0.456" />
+            </label>
+            <label>
+              theta (rad)
+              <input type="number" step="0.001" name="theta" value="0" />
+            </label>
+          </div>
+          <div class="actions">
+            <button type="submit">Compute Distance</button>
+            <div class="result" id="result">Distance: <strong>--</strong> m</div>
+            <div class="status" id="status"></div>
+          </div>
+        </form>
+      </section>
+      <!--panels are just styled containers-->
+      <section class="panel">
+        <h2>Track Preview</h2>
+        <!--SVG = Scalable Vector Graphing to draw track-->
+        <svg class="track-frame" viewBox="0 0 600 360" role="img" aria-label="Track visualization">
+          <g class="track-layer" id="track-layer"></g>
+        </svg>
+        <div class="track-meta" id="track-status">Loading track...</div>
+        <div class="tooltip" id="track-tooltip"></div>
+      </section>
+    </div>
+
+    <script>
+      const form = document.getElementById("distance-form");
+      const result = document.getElementById("result");
+      const status = document.getElementById("status");
+      const trackLayer = document.getElementById("track-layer");
+      const trackStatus = document.getElementById("track-status");
+      const trackSvg = document.querySelector(".track-frame");
+      const trackTooltip = document.getElementById("track-tooltip");
+
+      const fields = [
+        "v",
+        "batteryWh",
+        "solarWhPerMin",
+        "etaDrive",
+        "raceDayMin",
+        "rWheel",
+        "tMax",
+        "pMax",
+        "m",
+        "g",
+        "cRr",
+        "rho",
+        "cD",
+        "a",
+        "theta",
+      ];
+      //converting user input to num
+      function toNumber(value) {
+        const num = Number.parseFloat(value);
+        return Number.isFinite(num) ? num : null;
+      }
+
+      //maps speed to a color
+      function speedToColor(speed, minSpeed, maxSpeed) {
+        const clamped = Math.max(minSpeed, Math.min(speed, maxSpeed));
+        const t = (clamped - minSpeed) / Math.max(1e-6, maxSpeed - minSpeed);
+        const hue = 210 - 210 * t;
+        return `hsl(${hue}, 80%, 48%)`;
+      }
+
+      function clearTrackLayer() {
+        while (trackLayer.firstChild) {
+          trackLayer.removeChild(trackLayer.firstChild);
+        }
+      }
+
+      //Draw track with SVG
+      function renderTelemetry(points) {
+        if (!points.length) {
+          trackStatus.textContent = "Telemetry data is empty.";
+          return;
+        }
+
+        let minX = points[0].x;
+        let maxX = points[0].x;
+        let minY = points[0].y;
+        let maxY = points[0].y;
+        let minSpeed = points[0].speed;
+        let maxSpeed = points[0].speed;
+        for (const pt of points) {
+          minX = Math.min(minX, pt.x);
+          maxX = Math.max(maxX, pt.x);
+          minY = Math.min(minY, pt.y);
+          maxY = Math.max(maxY, pt.y);
+          minSpeed = Math.min(minSpeed, pt.speed);
+          maxSpeed = Math.max(maxSpeed, pt.speed);
+        }
+
+        //turning bounded box to SVG viewbox for box to fit nicely in frame
+        const padding = 40;
+        const width = Math.max(1, maxX - minX);
+        const height = Math.max(1, maxY - minY);
+        const viewBox = [
+          minX - padding,
+          minY - padding,
+          width + padding * 2,
+          height + padding * 2,
+        ].join(" ");
+
+        if (trackSvg) {
+          trackSvg.setAttribute("viewBox", viewBox);
+        }
+
+        clearTrackLayer();
+        const strokeWidth = 6;
+        for (let i = 1; i < points.length; i += 1) {
+          const prev = points[i - 1];
+          const curr = points[i];
+          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          const d = `M ${prev.x} ${prev.y} L ${curr.x} ${curr.y}`;
+          path.setAttribute("d", d);
+          path.setAttribute("fill", "none");
+          path.setAttribute("stroke", speedToColor(curr.speed, minSpeed, maxSpeed));
+          path.setAttribute("stroke-width", strokeWidth);
+          path.setAttribute("stroke-linecap", "round");
+          path.dataset.speed = curr.speed.toFixed(2);
+          path.dataset.accel = curr.accel.toFixed(3);
+          path.dataset.distance = curr.distance.toFixed(1);
+          trackLayer.appendChild(path);
+        }
+
+        trackStatus.textContent = `Telemetry points: ${points.length}`;
+      }
+
+      //hover feature
+      function showTooltip(event) {
+        const target = event.target;
+        if (!(target instanceof SVGPathElement)) {
+          return;
+        }
+        const speed = target.dataset.speed || "--";
+        const accel = target.dataset.accel || "--";
+        const distance = target.dataset.distance || "--";
+        trackTooltip.innerHTML = `Speed: <strong>${speed}</strong> m/s<br/>Accel: ${accel} m/s²<br/>Dist: ${distance} m`;
+        trackTooltip.style.left = `${event.clientX + 12}px`;
+        trackTooltip.style.top = `${event.clientY + 12}px`;
+        trackTooltip.classList.add("visible");
+      }
+
+      function hideTooltip() {
+        trackTooltip.classList.remove("visible");
+      }
+
+      async function loadTrack() {
+        try {
+          const response = await fetch("http://localhost:8080/track/telemetry");
+          const data = await response.json();
+          if (!response.ok || !Array.isArray(data.points)) {
+            trackStatus.textContent = "Failed to load track telemetry.";
+            return;
+          }
+          renderTelemetry(data.points);
+        } catch (error) {
+          trackStatus.textContent = "Unable to reach backend for track telemetry.";
+        }
+      }
+
+      //when form is submitted, run
+      //async bc a network request is made so everything else stays functional
+      //async marks function as pause capable because of await
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault(); //Don’t do the browser’s default form behavior.
+        status.textContent = "Calculating...";
+
+        const payload = {};
+        //add to payload
+        for (const field of fields) {
+          const input = form.elements[field];
+          const value = toNumber(input.value);
+          if (value === null) {
+            status.textContent = `Invalid value for ${field}.`;
+            return;
+          }
+          payload[field] = value;
+        }
+
+        try {
+          //send POST request with JSON data and wait for server response and then store the response
+          //fetch starts network request
+          //await pauses this function
+          const response = await fetch("http://localhost:8080/distance", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          
+          //without await, data is promise (data unavailable but will arrive in the future)
+          const data = await response.json();
+          if (!response.ok || !data.ok) {
+            status.textContent = data.message || "Request failed.";
+            return;
+          }
+
+          result.innerHTML = `Distance: <strong>${data.distanceM.toFixed(2)}</strong> m`;
+          status.textContent = "Success.";
+        } catch (error) {
+          status.textContent = "Network error. Is the server running?";
+        }
+      });
+
+      trackLayer.addEventListener("mousemove", showTooltip);
+      trackLayer.addEventListener("mouseleave", hideTooltip);
+
+      loadTrack();
+    </script>
+  </body>
+</html>
