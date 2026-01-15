@@ -152,6 +152,7 @@ function App() {
 
     loadTelemetry()
     //returning cleanup func when component is about to be unmounted
+    //react is about to remove DOM
     return () => {
       isMounted = false
     }
