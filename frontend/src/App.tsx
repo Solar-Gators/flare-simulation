@@ -134,6 +134,7 @@ function App() {
     //async function to await for fetch
     async function loadTelemetry() {
       try {
+        //pause async func w/o freezing UI until backend response
         const response = await fetch('http://localhost:8080/track/telemetry')
         const data = await response.json()
         if (!response.ok || !Array.isArray(data.points)) {
@@ -150,6 +151,7 @@ function App() {
     }
 
     loadTelemetry()
+    //returning cleanup func when component is about to be unmounted
     return () => {
       isMounted = false
     }
