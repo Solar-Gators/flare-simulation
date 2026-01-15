@@ -26,6 +26,7 @@ type FieldDef = {
   value: string
 }
 
+//input fields for distance calculator
 const initialFields: FieldDef[] = [
   { name: 'v', label: 'v (m/s)', step: '0.1', value: '20' },
   { name: 'batteryWh', label: 'batteryWh', step: '1', value: '5000' },
@@ -44,11 +45,13 @@ const initialFields: FieldDef[] = [
   { name: 'theta', label: 'theta (rad)', step: '0.001', value: '0' },
 ]
 
+//checking user input is num
 function toNumber(value: string): number | null {
   const num = Number.parseFloat(value)
   return Number.isFinite(num) ? num : null
 }
 
+//converting speed information into corresponding color
 function speedToColor(speed: number, minSpeed: number, maxSpeed: number): string {
   const clamped = Math.max(minSpeed, Math.min(speed, maxSpeed))
   const t = (clamped - minSpeed) / Math.max(1e-6, maxSpeed - minSpeed)
@@ -57,7 +60,11 @@ function speedToColor(speed: number, minSpeed: number, maxSpeed: number): string
 }
 
 function App() {
-  const [fields, setFields] = useState(initialFields)
+  //fields --> current val
+  //setFields -->func to change val
+  //initialFields --> what it shows when first rendered
+  //useState makes changing the UI automatic instead of manually updating DOM
+  const [fields, setFields] = useState(initialFields) 
   const [result, setResult] = useState('--')
   const [status, setStatus] = useState('')
   const [trackStatus, setTrackStatus] = useState('Loading track...')
@@ -71,6 +78,7 @@ function App() {
     distance: 0,
   })
 
+  //preparing data needed to draw track
   const { segments, viewBox, speedRange } = useMemo(() => {
     if (telemetry.length < 2) {
       return { segments: [], viewBox: '0 0 600 360', speedRange: [0, 1] as const }
@@ -116,8 +124,14 @@ function App() {
     return { segments: nextSegments, viewBox: nextViewBox, speedRange: [minSpeed, maxSpeed] as const }
   }, [telemetry])
 
+  //run code when react renders
+  //code runs when data from backend is fetched
+  //when state changes react call App func again
+  //App is called whenever a state is changed/ when data of react state var changes
   useEffect(() => {
-    let isMounted = true
+    //sets mount to true, react is rendering App and keeps DOM on page
+    let isMounted = true //is mounted checks if this funcs renders is being used by reacti
+    //async function to await for fetch
     async function loadTelemetry() {
       try {
         const response = await fetch('http://localhost:8080/track/telemetry')
