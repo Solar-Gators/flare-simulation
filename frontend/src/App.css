@@ -17,7 +17,7 @@
 body {
   margin: 0;
   color: var(--ink);
-  font-family: "Avenir Next", "Avenir", "Gill Sans", "Calibri", "Trebuchet MS", sans-serif;
+  font-family: 'Avenir Next', 'Avenir', 'Gill Sans', 'Calibri', 'Trebuchet MS', sans-serif;
   background:
     radial-gradient(800px 500px at 10% 0%, #f9f2e9 0%, rgba(249, 242, 233, 0) 70%),
     radial-gradient(700px 600px at 90% 20%, #e6f1f8 0%, rgba(230, 241, 248, 0) 65%),
@@ -106,7 +106,9 @@ button {
   font-weight: 600;
   letter-spacing: 0.03em;
   cursor: pointer;
-  transition: transform 120ms ease, box-shadow 120ms ease;
+  transition:
+    transform 120ms ease,
+    box-shadow 120ms ease;
 }
 
 button:hover {
@@ -158,7 +160,9 @@ button:hover {
   pointer-events: none;
   opacity: 0;
   transform: translateY(-6px);
-  transition: opacity 120ms ease, transform 120ms ease;
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
   white-space: nowrap;
 }
 

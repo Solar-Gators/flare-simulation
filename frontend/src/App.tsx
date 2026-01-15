@@ -64,7 +64,7 @@ function App() {
   //setFields -->func to change val
   //initialFields --> what it shows when first rendered
   //useState makes changing the UI automatic instead of manually updating DOM
-  const [fields, setFields] = useState(initialFields) 
+  const [fields, setFields] = useState(initialFields)
   const [result, setResult] = useState('--')
   const [status, setStatus] = useState('')
   const [trackStatus, setTrackStatus] = useState('Loading track...')
@@ -121,7 +121,11 @@ function App() {
       }
     })
 
-    return { segments: nextSegments, viewBox: nextViewBox, speedRange: [minSpeed, maxSpeed] as const }
+    return {
+      segments: nextSegments,
+      viewBox: nextViewBox,
+      speedRange: [minSpeed, maxSpeed] as const,
+    }
   }, [telemetry])
 
   //run code when react renders
@@ -159,9 +163,7 @@ function App() {
   }, [])
 
   const handleInputChange = (name: string, value: string) => {
-    setFields((prev) =>
-      prev.map((field) => (field.name === name ? { ...field, value } : field)),
-    )
+    setFields((prev) => prev.map((field) => (field.name === name ? { ...field, value } : field)))
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
