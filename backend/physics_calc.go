@@ -1,9 +1,10 @@
 package main
 
-import(
+import (
 	"fmt"
 	"math"
 )
+
 
 func calcCurveSpeed(segments Segment, gravity float64, gmax float64) float64 {
 	radius := segments.Radius
@@ -134,10 +135,6 @@ func coastConservation(cruiseEnergy, bottomEnergy, distance, curveSpeed, cruiseS
 }
 
 // How much energy is used given a constant accel after a curve
-// func curveAccelEnergy(cruiseSpeed float64, currentSpeed float64, accel float64, mass float64) float64 {
-// 	energyUsed := 0.5 * mass * ((math.Pow(cruiseSpeed, 2)) - (math.Pow(currentSpeed, 2)))
-// 	return energyUsed / 3600.0 //returns wh
-// }
 // curveAccelEnergy calculates the total energy (in Wh) required to accelerate
 // a vehicle from initSpeed to cruiseSpeed under constant accel,
 // including aerodynamic drag and rolling resistance losses.
