@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math"
+	"time"
 )
 
 func main() {
@@ -184,8 +185,38 @@ NCM_Motorsports_Park := Track{
 }
 	}
 
-	fullBatt := batteryWh
-	battWithLosses := fullBatt
+	// spanStart := time.Now().Truncate(time.Hour)
+	// spanEnd := spanStart.Add(8 * time.Hour)
+
+	loc, _ := time.LoadLocation("America/New_York")
+	now := time.Now().In(loc)
+
+	spanStart := time.Date(now.Year(), now.Month(), now.Day(), 9, 0, 0, 0, loc)
+	spanEnd   := time.Date(now.Year(), now.Month(), now.Day(), 17, 0, 0, 0, loc)
+
+	totalEnergyGained, fullBatt, err := BuildEnergyWithBattery(
+	29.6516, -82.3248,        // lat, lon
+	5.0, 0.0,                 // tilt, azimuth
+	"America/New_York",       // timezone
+	1.0,                        // forecastDays (1 day is enough for 8 hours)
+
+	4.0,                      // panelArea (m²)
+	0.22,                     // panelEff
+	0.9,                      // systemEff
+
+	time.Hour,                // dt
+	batteryWh,                // initialBatteryWh
+
+	&spanStart,               // start time
+	&spanEnd,                 // end time
+	)
+	if err != nil {
+		panic(err)
+	}	
+
+	fmt.Println("Total Energy Gained: ", totalEnergyGained, "Fullbatt after gaines: ", fullBatt)
+
+	var battWithLosses float64 = fullBatt
 
 	//csv file tracking distance and speed + battery
 	//reset info arleady there
@@ -199,8 +230,8 @@ NCM_Motorsports_Park := Track{
 	//until speed converges at a certain speed
 
 	for n := 0; n < 7; n += 1 {
-		lapLoss := 0.0
-		numLaps := 0.0
+		var lapLoss float64= 0.0
+		var numLaps float64 = 0.0
 		bestV, bestD := 0.0, 0.0
 		//find best speed and distace (estimate)
 		for v := 2.0; v <= 40.0; v += 0.5 {
@@ -222,9 +253,8 @@ NCM_Motorsports_Park := Track{
 
 		fmt.Println("Distance: ", bestD)
 		fmt.Println("velocity: ", bestV)
-
-		//find total losses
-		//amt energy lost in lap
+		 
+		//find total losses by taking net losses of all curves (given the calculated laps)
 		cruiseE := PowerRequired(bestV, m, g, Crr, rho, Cd, A, theta)
 		for j := 0; j < len(NCM_Motorsports_Park.Segments)-1; j++ {
 			if NCM_Motorsports_Park.Segments[j].Radius != 0 {
@@ -236,9 +266,24 @@ NCM_Motorsports_Park := Track{
 
 		fmt.Println(numLaps)
 		fmt.Println("-----------------")
-		battWithLosses = fullBatt - lapLoss*numLaps
+		// sets up next iteration battery (with losses) 
+		battWithLosses = fullBatt - lapLoss * numLaps
 		WriteStepStatstoCSV(bestV, math.Round(bestD), battWithLosses)
 	}
 
 	fmt.Println(getTotalLength(NCM_Motorsports_Park))
 }
+
+func BuildEnergySeriesWithBattery(f1, f2, f3, f4 float64, s string, i int, f5, f6, f7 float64, duration time.Duration, batteryWh float64, time1 *time.Time, time2 *time.Time) (any, any, any) {
+	panic("unimplemented")
+}
+
+// 1st iteration takes a full battery --> a track with no curves
+// finds best velocity by iterating through speeds
+// finds distance given that velocity
+// uses total distance to find number of laps
+// calculates the number of energy losses given the number of laps (because curves --> energy loss)
+// recalculates battery for next iteration (flucating between overestimation and underestimation)
+// only product we want is the velocity at the end of 7th iteration
+
+

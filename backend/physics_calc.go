@@ -9,7 +9,16 @@ package main
 
 */
 
-import(
+/*
+**Important Vars.**
+
+- Cd = track coeff
+- A = frontal area
+- Crr = Rolling Resistance
+
+*/
+
+import (
 	"fmt"
 	"math"
 )
@@ -158,6 +167,7 @@ func coastConservation(cruiseEnergy, bottomEnergy, distance, curveSpeed, cruiseS
 	return energySavedWh
 }
 
+// How much energy is used given a constant accel after a curve
 
 // curveAccelEnergy calculates the total energy (in Wh) required to accelerate
 // a vehicle from initSpeed to cruiseSpeed under constant accel,
