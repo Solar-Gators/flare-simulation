@@ -142,27 +142,6 @@ seg99_c := Segment{Radius: 146.78, Angle: 29.52}
 seg100_c := Segment{Radius: 112.69, Angle: -16.17}
 seg101_c := Segment{Radius: 121.26, Angle: -10.85}
 
-NCM_Motorsports_Park := Track{
-	Segments: []Segment{
-		seg0_s,
-		seg1_c, seg2_c, seg3_c, seg4_c, seg5_c, seg6_c, seg7_c, seg8_c,
-		seg9_c, seg10_c, seg11_c, seg12_c, seg13_c, seg14_c, seg15_c,
-		seg16_c, seg17_c, seg18_c, seg19_c, seg20_c, seg21_c, seg22_c,
-		seg23_c, seg24_c, seg25_c, seg26_c, seg27_c, seg28_c, seg29_c,
-		seg30_c, seg31_c, seg32_c, seg33_c, seg34_c, seg35_c, seg36_c,
-		seg37_c, seg38_c, seg39_c, seg40_c, seg41_c, seg42_c, seg43_c,
-		seg44_c, seg45_c, seg46_c, seg47_c, seg48_c, seg49_c, seg50_c,
-		seg51_c, seg52_c, seg53_c, seg54_c, seg55_c, seg56_c, seg57_c,
-		seg58_c, seg59_c, seg60_c, seg61_c, seg62_c, seg63_c, seg64_c,
-		seg65_c, seg66_c, seg67_c, seg68_c, seg69_c, seg70_c, seg71_c,
-		seg72_c, seg73_c, seg74_c, seg75_c, seg76_c, seg77_c, seg78_c,
-		seg79_c, seg80_c, seg81_c, seg82_c, seg83_c, seg84_c, seg85_c,
-		seg86_c, seg87_c, seg88_c, seg89_c, seg90_c, seg91_c, seg92_c,
-		seg93_c, seg94_c, seg95_c, seg96_c, seg97_c, seg98_c, seg99_c,
-		seg100_c, seg101_c,
-	},
-}
-
 	NCM_Motorsports_Park := Track{
 	Segments: []Segment{
 		seg0_s,
@@ -183,8 +162,7 @@ NCM_Motorsports_Park := Track{
 		seg100_c, seg101_c,
 	},
 }
-	}
-
+	
 	// spanStart := time.Now().Truncate(time.Hour)
 	// spanEnd := spanStart.Add(8 * time.Hour)
 
@@ -228,7 +206,7 @@ NCM_Motorsports_Park := Track{
 	//second -> use the difference from the first iteration as the battery reserve (pessimistic) then subtract energy losses from OG battery (1000) information
 	//third -> use the difference of the last one (more optimistic) ...
 	//until speed converges at a certain speed
-
+	
 	for n := 0; n < 7; n += 1 {
 		var lapLoss float64= 0.0
 		var numLaps float64 = 0.0
@@ -277,13 +255,5 @@ NCM_Motorsports_Park := Track{
 func BuildEnergySeriesWithBattery(f1, f2, f3, f4 float64, s string, i int, f5, f6, f7 float64, duration time.Duration, batteryWh float64, time1 *time.Time, time2 *time.Time) (any, any, any) {
 	panic("unimplemented")
 }
-
-// 1st iteration takes a full battery --> a track with no curves
-// finds best velocity by iterating through speeds
-// finds distance given that velocity
-// uses total distance to find number of laps
-// calculates the number of energy losses given the number of laps (because curves --> energy loss)
-// recalculates battery for next iteration (flucating between overestimation and underestimation)
-// only product we want is the velocity at the end of 7th iteration
 
 
