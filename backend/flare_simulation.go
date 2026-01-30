@@ -162,9 +162,6 @@ seg101_c := Segment{Radius: 121.26, Angle: -10.85}
 		seg100_c, seg101_c,
 	},
 }
-	
-	// spanStart := time.Now().Truncate(time.Hour)
-	// spanEnd := spanStart.Add(8 * time.Hour)
 
 	loc, _ := time.LoadLocation("America/New_York")
 	now := time.Now().In(loc)
@@ -225,7 +222,7 @@ seg101_c := Segment{Radius: 121.26, Angle: -10.85}
 			if d, ok := DistanceForSpeedEV(v, battWithLosses, solarWhPerMin, etaDrive, raceDayMin,
 				rWheel, Tmax, Pmax, m, g, Crr, rho, Cd, A, theta); ok && d > bestD {
 				bestD, bestV = d, v
-				numLaps = d / 5070.0
+				numLaps = d / getTotalLength(NCM_Motorsports_Park)
 			}
 		}
 
@@ -236,24 +233,17 @@ seg101_c := Segment{Radius: 121.26, Angle: -10.85}
 		cruiseE := PowerRequired(bestV, m, g, Crr, rho, Cd, A, theta)
 		for j := 0; j < len(NCM_Motorsports_Park.Segments)-1; j++ {
 			if NCM_Motorsports_Park.Segments[j].Radius != 0 {
-				lapLoss += float64(netCurveLosses(m, A, Cd, Crr, NCM_Motorsports_Park.Segments[j+1], bestV, 0.5, rho, g, cruiseE, 0.006, 10, 0.8)) // MAKE A FUNCTION TO CHECK IF THE NEXT SEGMENT IS A CURVE
-				fmt.Println(lapLoss)
-				fmt.Println("total loss in segment ", j, ": ", lapLoss)
+				lapLoss += float64(netCurveLosses(m, A, Cd, Crr, NCM_Motorsports_Park.Segments[j], bestV, 0.5, rho, g, cruiseE, 0.006, 10, 0.8)) // MAKE A FUNCTION TO CHECK IF THE NEXT SEGMENT IS A CURVE
 			}
 		}
 
-		fmt.Println(numLaps)
+		fmt.Println("Number of Laps: ", numLaps)
 		fmt.Println("-----------------")
 		// sets up next iteration battery (with losses) 
 		battWithLosses = fullBatt - lapLoss * numLaps
 		WriteStepStatstoCSV(bestV, math.Round(bestD), battWithLosses)
 	}
 
-	fmt.Println(getTotalLength(NCM_Motorsports_Park))
+	fmt.Println("Total Length of Track: ", getTotalLength(NCM_Motorsports_Park))
 }
-
-func BuildEnergySeriesWithBattery(f1, f2, f3, f4 float64, s string, i int, f5, f6, f7 float64, duration time.Duration, batteryWh float64, time1 *time.Time, time2 *time.Time) (any, any, any) {
-	panic("unimplemented")
-}
-
 
