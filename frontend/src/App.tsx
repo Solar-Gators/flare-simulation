@@ -1,6 +1,7 @@
 import type { FormEvent, MouseEvent } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
+import TelemetryGraph from './components/TelemetryGraph'
 
 type TelemetryPoint = {
   x: number
@@ -273,6 +274,9 @@ function App() {
         </svg>
         <div className="track-meta">
           {trackStatus} · Speed range {speedRange[0].toFixed(2)}–{speedRange[1].toFixed(2)} m/s
+        </div>
+        <div style={{ marginTop: 12 }}>
+          <TelemetryGraph telemetry={telemetry} />
         </div>
       </section>
 
