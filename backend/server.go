@@ -59,8 +59,32 @@ type telemetryPoint struct {
 	Distance float64 `json:"distance"`
 }
 
+type telemetryRequest struct {
+    // same fields as distanceRequest
+    V             float64 `json:"v"`
+    BatteryWh     float64 `json:"batteryWh"`
+    SolarWhPerMin float64 `json:"solarWhPerMin"`
+    EtaDrive      float64 `json:"etaDrive"`
+    RaceDayMin    float64 `json:"raceDayMin"`
+    RWheel        float64 `json:"rWheel"`
+    Tmax          float64 `json:"tMax"`
+    Pmax          float64 `json:"pMax"`
+    M             float64 `json:"m"`
+    G             float64 `json:"g"`
+    Crr           float64 `json:"cRr"`
+    Rho           float64 `json:"rho"`
+    Cd            float64 `json:"cD"`
+    A             float64 `json:"a"`
+    Theta         float64 `json:"theta"`
+
+    // telemetry-specific options
+    Wraparound bool `json:"wraparound"`
+}
+
 type telemetryResponse struct {
-	Points []telemetryPoint `json:"points"`
+    Points  []telemetryPoint `json:"points"`
+    OK      bool             `json:"ok"`
+    Message string           `json:"message,omitempty"`
 }
 
 var optimalCruiseSpeed float64
@@ -274,171 +298,296 @@ func defaultTrackSegments() []trackSegment {
 }
 
 func trackTelemetryHandler(w http.ResponseWriter, r *http.Request) {
-	addCORSHeaders(w)
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+    addCORSHeaders(w)
+    if r.Method == http.MethodOptions {
+        w.WriteHeader(http.StatusNoContent)
+        return
+    }
+    if r.Method != http.MethodPost {
+        http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+        return
+    }
 
-	segments := defaultTrackSegments()
-	points := buildTelemetry(segments)
-	writeJSON(w, http.StatusOK, telemetryResponse{Points: points})
+    var req telemetryRequest
+    dec := json.NewDecoder(r.Body)
+    dec.DisallowUnknownFields()
+    if err := dec.Decode(&req); err != nil {
+        writeJSON(w, http.StatusBadRequest, telemetryResponse{OK: false, Message: "invalid JSON body"})
+        return
+    }
+
+    // Basic validation (same spirit as /distance; loosen if you want)
+    if req.EtaDrive <= 0 || req.RaceDayMin <= 0 ||
+        req.RWheel <= 0 || req.Tmax <= 0 || req.Pmax <= 0 || req.M <= 0 || req.G <= 0 ||
+        req.Crr < 0 || req.Rho <= 0 || req.Cd <= 0 || req.A <= 0 {
+        writeJSON(w, http.StatusBadRequest, telemetryResponse{OK: false, Message: "missing or invalid input values"})
+        return
+    }
+
+    // If wraparound is OFF, we use your convention: start from 0 speed.
+    startFromZero := !req.Wraparound
+
+    segments := defaultTrackSegments()
+
+    // IMPORTANT: call a telemetry builder that uses req.* instead of hard-coded constants.
+    points := buildTelemetryFromRequest(segments, req, startFromZero)
+
+    writeJSON(w, http.StatusOK, telemetryResponse{Points: points, OK: true})
 }
 
-// returns a list of points (x,y,speed,accel,distance)
-// no more speed "snap" in curves as in instead of setting v to the V capacity
-// the V is now ramp towards the cap given acceleration limits
-// ++ included friction-circle limit bc in curves lateral acceleration uses grip which reduces how much longitudinal accel/brake you can apply
-// we have target cruise speed to prevent the car from accelerating forever if V is below we accelerate and if above we brake
-// fixed our issue of V approaching and reaching 0 bc of curves by removing continuous coasting decel curves and replacing by controlled approach to target curve speed
-// we essentially established a baseline for the optimal speed around curve instead of always taking foot off gas when approaching curve.
-func buildTelemetry(segments []trackSegment) []telemetryPoint {
-	const (
-		stepM    = 1.0
-		gmax     = 0.8
-		muTire   = 0.9
-		brakePct = 0.95
-		maxSpeed = 40.0
-		vMin     = 0.5
-		A        = 0.456
-		Cd       = 0.21
-		rho      = 1.225
-		Crr      = 0.0015
-		m        = 285.0
-		g        = 9.81
-		theta    = 0.0
-		rWheel   = 0.2792
-		Tmax     = 45.0
-		Pmax     = 10000.0
-		etaDrive = 0.90
-	)
+func buildTelemetryFromRequest(segments []trackSegment, req telemetryRequest, startFromZero bool) []telemetryPoint {
+    // Here we pass the parameters down to a parameterized telemetry function.
+    // You will create buildTelemetryWithParams next (small refactor from your current buildTelemetry).
+    return buildTelemetryWithParams(
+        segments,
+        req.Wraparound,
+        startFromZero,
 
-	points := make([]telemetryPoint, 0, 64)
-	x, y, heading := 0.0, 0.0, 0.0
-	v := 0.5
-	distance := 0.0
-	points = append(points, telemetryPoint{X: x, Y: y, Speed: v, Accel: 0, Distance: distance})
+        // vehicle/physics inputs
+        req.M, req.G, req.Crr, req.Rho, req.Cd, req.A, req.Theta,
 
-	baseTarget := maxSpeed
-	if optimalCruiseSpeed > 0 {
-		baseTarget = optimalCruiseSpeed
-	}
-	if maxSpeed > 0 && baseTarget > maxSpeed {
-		baseTarget = maxSpeed
-	}
+        // EV inputs
+        req.RWheel, req.Tmax, req.Pmax, req.EtaDrive,
 
-	for i, seg := range segments {
-		switch seg.Type {
-		//when we are dealing with a straight segment
-		case "straight":
-			nextCurveCap := 0.0
-			//if next segment is a curve find max curve speed
-			if i+1 < len(segments) && segments[i+1].Type == "curve" && segments[i+1].Radius > 0 {
-				nextCurveCap = math.Sqrt(gmax * g * segments[i+1].Radius)
-			}
-			remaining := seg.Length
-			for remaining > 0 {
-				ds := math.Min(stepM, remaining) //going thru every stepM meters (10m)
-				targetSpeed := baseTarget
-				if nextCurveCap > 0 && v > nextCurveCap*brakePct {
-					targetSpeed = math.Min(targetSpeed, nextCurveCap)
-				}
-				aLongMax := muTire * g
-				var a float64
-				if v > targetSpeed {
-					aReq := (targetSpeed*targetSpeed - v*v) / (2 * remaining)
-					a = math.Max(aReq, -aLongMax)
-				} else if v < targetSpeed {
-					aPower := accelAtSpeed(v, vMin, rWheel, Tmax, Pmax, etaDrive, m, g, Crr, rho, Cd, A, theta)
-					a = math.Min(aPower, aLongMax)
-				} else {
-					a = 0
-				}
-				vNext := updateSpeed(v, a, ds)
-				if vNext > targetSpeed {
-					vNext = targetSpeed
-				}
-				//update position
-				x += ds * math.Cos(heading)
-				y += ds * math.Sin(heading)
-				distance += ds
-				points = append(points, telemetryPoint{X: x, Y: y, Speed: vNext, Accel: a, Distance: distance})
-				log.Printf("speed=%.2f accel=%.3f", v, a)
-				v = vNext
-				remaining -= ds
-			}
-		case "curve":
-			if seg.Angle == 0 {
-				continue
-			}
-			if seg.Radius == 0 {
-				heading += seg.Angle * math.Pi / 180.0
-				points = append(points, telemetryPoint{X: x, Y: y, Speed: v, Accel: 0, Distance: distance})
-				continue
-			}
-			aLatMax := gmax * g
-			vCap := math.Sqrt(aLatMax * seg.Radius)
-			targetSpeed := math.Min(vCap, baseTarget)
-			if maxSpeed > 0 && targetSpeed > maxSpeed {
-				targetSpeed = maxSpeed
-			}
-			angleDeg := seg.Angle
-			arcLength := seg.Radius * math.Abs(angleDeg) * math.Pi / 180.0
-			remaining := arcLength
-			isRight := angleDeg < 0
-			//computes data points for each step along curve segment
-			for remaining > 0 {
-				ds := math.Min(stepM, remaining)
-				delta := ds / seg.Radius
-				if !isRight {
-					delta = -delta
-				}
+        // cruise target (use req.V as the baseTarget for the map)
+        req.V,
+    )
+}
 
-				normalX := -math.Sin(heading)
-				normalY := math.Cos(heading)
-				if !isRight {
-					normalX = math.Sin(heading)
-					normalY = -math.Cos(heading)
-				}
-				centerX := x + seg.Radius*normalX
-				centerY := y + seg.Radius*normalY
-				dx := x - centerX
-				dy := y - centerY
-				cos := math.Cos(delta)
-				sin := math.Sin(delta)
-				x = centerX + dx*cos - dy*sin
-				y = centerY + dx*sin + dy*cos
-				heading += delta
-				distance += ds
-				aLat := (v * v) / seg.Radius
-				aTotalMax := muTire * g
-				aLongMax := math.Sqrt(math.Max(0, aTotalMax*aTotalMax-aLat*aLat))
-				var a float64
-				if v > targetSpeed {
-					aReq := (targetSpeed*targetSpeed - v*v) / (2 * remaining)
-					a = math.Max(aReq, -aLongMax)
-				} else if v < targetSpeed {
-					aPower := accelAtSpeed(v, vMin, rWheel, Tmax, Pmax, etaDrive, m, g, Crr, rho, Cd, A, theta)
-					a = math.Min(aPower, aLongMax)
-				} else {
-					a = 0
-				}
-				vNext := updateSpeed(v, a, ds)
-				if vNext > targetSpeed {
-					vNext = targetSpeed
-				}
-				points = append(points, telemetryPoint{X: x, Y: y, Speed: vNext, Accel: a, Distance: distance})
-				v = vNext
-				remaining -= ds
-			}
-		}
-	}
+func buildTelemetry(segments []trackSegment, wraparound, startFromZero bool) []telemetryPoint {
+    const (
+        stepM    = 0.25 // CHANGED from 1.0
+        gmax     = 0.8
+        muTire   = 0.9
+        maxSpeed = 40.0
+        vMin     = 0.5
 
-	return points
+        // jerk limit (m/s^3). Since we step by distance, we convert to accel-step via dt ~= ds/max(v,vMin)
+        jerkMax = 1.5
+
+        A        = 0.456
+        Cd       = 0.21
+        rho      = 1.225
+        Crr      = 0.0015
+        m        = 285.0
+        g        = 9.81
+        theta    = 0.0
+        rWheel   = 0.2792
+        Tmax     = 45.0
+        Pmax     = 10000.0
+        etaDrive = 0.90
+    )
+
+    points := make([]telemetryPoint, 0, 256)
+    x, y, heading := 0.0, 0.0, 0.0
+
+    v := 0.5
+    if startFromZero {
+        v = 0.0
+    }
+
+    totalDistance := 0.0
+    prevA := 0.0
+    points = append(points, telemetryPoint{X: x, Y: y, Speed: v, Accel: 0, Distance: totalDistance})
+
+    // For telemetry, make the displayed speed map reflect the user's requested v.
+    // If you want to keep optimalCruiseSpeed logic, replace baseTarget accordingly.
+    baseTarget := maxSpeed
+    if optimalCruiseSpeed > 0 {
+        baseTarget = optimalCruiseSpeed
+    }
+    if maxSpeed > 0 && baseTarget > maxSpeed {
+        baseTarget = maxSpeed
+    }
+
+    constraints := buildConstraints(segments, gmax, g)
+    lapLength := totalLapLengthM(segments)
+
+    getNext := func(distInLap float64) (float64, float64, bool) {
+        if wraparound {
+            return nextConstraintWrap(constraints, distInLap, lapLength)
+        }
+        return nextConstraint(constraints, distInLap)
+    }
+
+    distInLapFn := func(totalDist float64) float64 {
+        if wraparound && lapLength > 0 {
+            d := math.Mod(totalDist, lapLength)
+            if d < 0 {
+                d += lapLength
+            }
+            return d
+        }
+        return totalDist
+    }
+
+    applyJerkLimit := func(aCmd, aPrev, vNow, ds float64) float64 {
+        vEff := math.Max(vNow, vMin)
+        dt := ds / vEff
+        maxDeltaA := jerkMax * dt
+        if aCmd > aPrev+maxDeltaA {
+            return aPrev + maxDeltaA
+        }
+        if aCmd < aPrev-maxDeltaA {
+            return aPrev - maxDeltaA
+        }
+        return aCmd
+    }
+
+    for _, seg := range segments {
+        switch seg.Type {
+        case "straight":
+            remaining := seg.Length
+            for remaining > 0 {
+                ds := math.Min(stepM, remaining)
+
+                // straight: no lateral load
+                aTotalMax := muTire * g
+                aLongMax := aTotalMax
+
+                distInLap := distInLapFn(totalDistance)
+
+                lookV := baseTarget
+                vLim, dTo, ok := getNext(distInLap)
+                if ok && vLim < lookV {
+                    lookV = vLim
+                }
+
+                var aCmd float64
+
+                if v > lookV && ok && dTo > 0 {
+                    // COAST DECEL (zero drive)
+                    aCoast := coastDecel(v, vMin, m, g, Crr, rho, Cd, A, theta) // negative
+
+                    // REQUIRED decel to meet constraint (constant-a kinematics)
+                    aReq := (lookV*lookV - v*v) / (2 * dTo) // negative
+
+                    // Pick the gentlest decel that still satisfies constraint:
+                    // both negative, so max() is "less braking" but still enough
+                    aCmd = math.Max(aReq, aCoast)
+
+                    // Tire limit
+                    aCmd = math.Max(aCmd, -aLongMax)
+                } else if v < baseTarget {
+                    // accelerate (power-limited)
+                    aPower := accelAtSpeed(v, vMin, rWheel, Tmax, Pmax, etaDrive, m, g, Crr, rho, Cd, A, theta)
+                    aCmd = math.Min(aPower, aLongMax)
+                } else {
+                    // above/at target: coast (no drive)
+                    aCmd = coastDecel(v, vMin, m, g, Crr, rho, Cd, A, theta)
+                    aCmd = math.Max(aCmd, -aLongMax)
+                }
+
+                // JERK LIMIT (smooth accel changes)
+                a := applyJerkLimit(aCmd, prevA, v, ds)
+
+                vNext := updateSpeed(v, a, ds)
+                if vNext > baseTarget {
+                    vNext = baseTarget
+                }
+
+                x += ds * math.Cos(heading)
+                y += ds * math.Sin(heading)
+                totalDistance += ds
+                points = append(points, telemetryPoint{X: x, Y: y, Speed: vNext, Accel: a, Distance: totalDistance})
+
+                v = vNext
+                prevA = a
+                remaining -= ds
+            }
+
+        case "curve":
+            if seg.Angle == 0 || seg.Radius <= 0 {
+                continue
+            }
+
+            aLatMax := gmax * g
+            vCap := math.Sqrt(aLatMax * seg.Radius)
+            targetSpeed := math.Min(vCap, baseTarget)
+            if maxSpeed > 0 && targetSpeed > maxSpeed {
+                targetSpeed = maxSpeed
+            }
+
+            arcLength := seg.Radius * math.Abs(seg.Angle) * math.Pi / 180.0
+            remaining := arcLength
+            isRight := seg.Angle < 0
+
+            for remaining > 0 {
+                ds := math.Min(stepM, remaining)
+
+                // geometry step along arc
+                delta := ds / seg.Radius
+                if !isRight {
+                    delta = -delta
+                }
+
+                normalX := -math.Sin(heading)
+                normalY := math.Cos(heading)
+                if !isRight {
+                    normalX = math.Sin(heading)
+                    normalY = -math.Cos(heading)
+                }
+
+                centerX := x + seg.Radius*normalX
+                centerY := y + seg.Radius*normalY
+
+                dx := x - centerX
+                dy := y - centerY
+
+                c := math.Cos(delta)
+                s := math.Sin(delta)
+                x = centerX + dx*c - dy*s
+                y = centerY + dx*s + dy*c
+                heading += delta
+
+                // friction circle
+                aLat := (v * v) / seg.Radius
+                aTotalMax := muTire * g
+                aLongMax := math.Sqrt(math.Max(0, aTotalMax*aTotalMax-aLat*aLat))
+
+                distInLap := distInLapFn(totalDistance)
+
+                lookV := targetSpeed
+                vLim, dTo, ok := getNext(distInLap)
+                if ok && vLim < lookV {
+                    lookV = vLim
+                }
+
+                var aCmd float64
+
+                if v > lookV && ok && dTo > 0 {
+                    aCoast := coastDecel(v, vMin, m, g, Crr, rho, Cd, A, theta) // negative
+                    aReq := (lookV*lookV - v*v) / (2 * dTo)                     // negative
+
+                    aCmd = math.Max(aReq, aCoast)
+                    aCmd = math.Max(aCmd, -aLongMax)
+                } else if v < targetSpeed {
+                    aPower := accelAtSpeed(v, vMin, rWheel, Tmax, Pmax, etaDrive, m, g, Crr, rho, Cd, A, theta)
+                    aCmd = math.Min(aPower, aLongMax)
+                } else {
+                    aCmd = coastDecel(v, vMin, m, g, Crr, rho, Cd, A, theta)
+                    aCmd = math.Max(aCmd, -aLongMax)
+                }
+
+                // JERK LIMIT
+                a := applyJerkLimit(aCmd, prevA, v, ds)
+
+                vNext := updateSpeed(v, a, ds)
+                if vNext > targetSpeed {
+                    vNext = targetSpeed
+                }
+
+                totalDistance += ds
+                points = append(points, telemetryPoint{X: x, Y: y, Speed: vNext, Accel: a, Distance: totalDistance})
+
+                v = vNext
+                prevA = a
+                remaining -= ds
+            }
+        }
+    }
+
+    return points
 }
 
 // calculates accel at a given v

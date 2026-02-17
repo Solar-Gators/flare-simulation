@@ -1,5 +1,13 @@
+// src/App.tsx (REPLACE file contents with this)
+// Changes:
+// - One checkbox: wraparoundLookahead (when off, backend will startFromZero=true)
+// - When you press "Compute", it calls BOTH:
+//   1) POST /distance to update the displayed distance
+//   2) GET  /track/telemetry?wraparound=... to update the map
+// - Button text changed from "Compute Distance" to "Compute"
+
 import type { FormEvent, MouseEvent } from 'react'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import './App.css'
 
 type TelemetryPoint = {
@@ -24,9 +32,10 @@ type FieldDef = {
   label: string
   step: string
   value: string
+  min?: string
+  max?: string
 }
 
-//input fields for distance calculator
 const initialFields: FieldDef[] = [
   { name: 'v', label: 'v (m/s)', step: '0.1', value: '20' },
   { name: 'batteryWh', label: 'batteryWh', step: '1', value: '5000' },
@@ -45,13 +54,11 @@ const initialFields: FieldDef[] = [
   { name: 'theta', label: 'theta (rad)', step: '0.001', value: '0' },
 ]
 
-//checking user input is num
 function toNumber(value: string): number | null {
   const num = Number.parseFloat(value)
   return Number.isFinite(num) ? num : null
 }
 
-//converting speed information into corresponding color
 function speedToColor(speed: number, minSpeed: number, maxSpeed: number): string {
   const clamped = Math.max(minSpeed, Math.min(speed, maxSpeed))
   const t = (clamped - minSpeed) / Math.max(1e-6, maxSpeed - minSpeed)
@@ -59,16 +66,43 @@ function speedToColor(speed: number, minSpeed: number, maxSpeed: number): string
   return `hsl(${hue}, 80%, 48%)`
 }
 
+async function postTelemetry(payload: Record<string, number>, wraparound: boolean) {
+  const body = { ...payload, wraparound }
+
+  const response = await fetch('http://localhost:8080/track/telemetry', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const data = await response.json()
+  if (!response.ok || !data.ok || !Array.isArray(data.points)) {
+    throw new Error(data?.message || 'Failed to load telemetry.')
+  }
+  return data.points as TelemetryPoint[]
+}
+
+async function postDistance(payload: Record<string, number>) {
+  const response = await fetch('http://localhost:8080/distance', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  const data = await response.json()
+  if (!response.ok || !data.ok) {
+    throw new Error(data?.message || 'Request failed.')
+  }
+  return data.distanceM as number
+}
+
 function App() {
-  //fields --> current val
-  //setFields -->func to change val
-  //initialFields --> what it shows when first rendered
-  //useState makes changing the UI automatic instead of manually updating DOM
   const [fields, setFields] = useState(initialFields)
+  const [wraparoundLookahead, setWraparoundLookahead] = useState(true)
+
   const [result, setResult] = useState('--')
-  const [status, setStatus] = useState('')
-  const [trackStatus, setTrackStatus] = useState('Loading track...')
+  const [status, setStatus] = useState('Fill inputs and press Compute.')
+  const [trackStatus, setTrackStatus] = useState('Track not loaded yet.')
   const [telemetry, setTelemetry] = useState<TelemetryPoint[]>([])
+
   const [tooltip, setTooltip] = useState<TooltipState>({
     visible: false,
     x: 0,
@@ -78,7 +112,6 @@ function App() {
     distance: 0,
   })
 
-  //preparing data needed to draw track
   const { segments, viewBox, speedRange } = useMemo(() => {
     if (telemetry.length < 2) {
       return { segments: [], viewBox: '0 0 600 360', speedRange: [0, 1] as const }
@@ -128,73 +161,41 @@ function App() {
     }
   }, [telemetry])
 
-  //run code when react renders
-  //code runs when data from backend is fetched
-  //when state changes react call App func again
-  //App is called whenever a state is changed/ when data of react state var changes
-  useEffect(() => {
-    //sets mount to true, react is rendering App and keeps DOM on page
-    let isMounted = true //is mounted checks if this funcs renders is being used by reacti
-    //async function to await for fetch
-    async function loadTelemetry() {
-      try {
-        //pause async func w/o freezing UI until backend response
-        const response = await fetch('http://localhost:8080/track/telemetry')
-        const data = await response.json()
-        if (!response.ok || !Array.isArray(data.points)) {
-          if (isMounted) setTrackStatus('Failed to load track telemetry.')
-          return
-        }
-        if (isMounted) {
-          setTelemetry(data.points)
-          setTrackStatus(`Telemetry points: ${data.points.length}`)
-        }
-      } catch {
-        if (isMounted) setTrackStatus('Unable to reach backend for track telemetry.')
-      }
-    }
-
-    loadTelemetry()
-    //returning cleanup func when component is about to be unmounted
-    //react is about to remove DOM
-    return () => {
-      isMounted = false
-    }
-  }, [])
-
   const handleInputChange = (name: string, value: string) => {
     setFields((prev) => prev.map((field) => (field.name === name ? { ...field, value } : field)))
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    setStatus('Calculating...')
+    setStatus('Computing...')
+    setTrackStatus('Updating track...')
 
     const payload: Record<string, number> = {}
     for (const field of fields) {
       const value = toNumber(field.value)
       if (value === null) {
         setStatus(`Invalid value for ${field.name}.`)
+        setTrackStatus('Track not updated.')
         return
       }
       payload[field.name] = value
     }
 
     try {
-      const response = await fetch('http://localhost:8080/distance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      const data = await response.json()
-      if (!response.ok || !data.ok) {
-        setStatus(data.message || 'Request failed.')
-        return
-      }
-      setResult(Number(data.distanceM).toFixed(2))
+      // Run both backend calls on Compute
+      const [distanceM, points] = await Promise.all([
+        postDistance(payload),
+        postTelemetry(payload, wraparoundLookahead),
+      ])
+
+      setResult(Number(distanceM).toFixed(2))
+      setTelemetry(points)
       setStatus('Success.')
-    } catch {
-      setStatus('Network error. Is the server running?')
+      setTrackStatus(`Telemetry points: ${points.length}`)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Request failed.'
+      setStatus(msg)
+      setTrackStatus(msg)
     }
   }
 
@@ -234,6 +235,8 @@ function App() {
                 <input
                   type="number"
                   step={field.step}
+                  min={field.min}
+                  max={field.max}
                   name={field.name}
                   value={field.value}
                   onChange={(event) => handleInputChange(field.name, event.target.value)}
@@ -241,8 +244,20 @@ function App() {
               </label>
             ))}
           </div>
+
+          <div className="toggles">
+            <label>
+              <input
+                type="checkbox"
+                checked={wraparoundLookahead}
+                onChange={(e) => setWraparoundLookahead(e.target.checked)}
+              />
+              Wraparound lookahead (if off: start from 0 speed)
+            </label>
+          </div>
+
           <div className="actions">
-            <button type="submit">Compute Distance</button>
+            <button type="submit">Compute</button>
             <div className="result">
               Distance: <strong>{result}</strong> m
             </div>
