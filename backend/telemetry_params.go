@@ -2,6 +2,8 @@ package main
 
 import "math"
 
+// Wrapper: if wraparound=true, do a warm-up lap and return the second lap starting
+// at the previous lap’s end speed (so the preview starts “already in motion”).
 func buildTelemetryWithParams(
     segments []trackSegment,
     wraparound bool,
@@ -25,6 +27,87 @@ func buildTelemetryWithParams(
     // cruise target on straights (m/s)
     baseTarget float64,
 ) []telemetryPoint {
+
+    // Non-wraparound: behave as before.
+    if !wraparound {
+        return buildTelemetryOneLapWithParams(
+            segments,
+            wraparound,
+            startFromZero,
+            m, g, Crr, rho, Cd, A, theta,
+            rWheel, Tmax, Pmax, etaDrive,
+            baseTarget,
+            0, 0, 0,
+            0,
+            0, // startSpeed (0 => use startFromZero logic)
+        )
+    }
+
+    // Wraparound: warm-up one lap, then generate a second lap starting from the warm-up end speed.
+    warm := buildTelemetryOneLapWithParams(
+        segments,
+        wraparound,
+        false, // don't force startFromZero for warmup
+        m, g, Crr, rho, Cd, A, theta,
+        rWheel, Tmax, Pmax, etaDrive,
+        baseTarget,
+        0, 0, 0,
+        0,
+        0,
+    )
+
+    if len(warm) < 2 {
+        return warm
+    }
+
+    last := warm[len(warm)-1]
+
+    // Start next lap at the previous lap’s end speed. Reset distance to 0 for clean coloring/viewBox.
+    return buildTelemetryOneLapWithParams(
+        segments,
+        wraparound,
+        false,
+        m, g, Crr, rho, Cd, A, theta,
+        rWheel, Tmax, Pmax, etaDrive,
+        baseTarget,
+        0, 0, 0, // restart position/orientation at start/finish for display
+        0,
+        last.Speed, // this is the key: start at previous lap end speed
+    )
+}
+
+// The original implementation, parameterized with initial conditions.
+// startSpeed <= 0 means “use startFromZero logic” (0 speed if startFromZero else 0.5).
+func buildTelemetryOneLapWithParams(
+    segments []trackSegment,
+    wraparound bool,
+    startFromZero bool,
+
+    // physics
+    m float64,
+    g float64,
+    Crr float64,
+    rho float64,
+    Cd float64,
+    A float64,
+    theta float64,
+
+    // EV
+    rWheel float64,
+    Tmax float64,
+    Pmax float64,
+    etaDrive float64,
+
+    // cruise target on straights (m/s)
+    baseTarget float64,
+
+    // initial conditions
+    startX float64,
+    startY float64,
+    startHeading float64,
+    startDistance float64,
+    startSpeed float64,
+) []telemetryPoint {
     const (
         stepM  = 0.25
         gmax   = 0.8
@@ -38,14 +121,18 @@ func buildTelemetryWithParams(
     )
 
     points := make([]telemetryPoint, 0, 256)
-    x, y, heading := 0.0, 0.0, 0.0
 
-    v := 0.5
-    if startFromZero {
-        v = 0.0
+    x, y, heading := startX, startY, startHeading
+
+    v := startSpeed
+    if v <= 0 {
+        v = 0.5
+        if startFromZero {
+            v = 0.0
+        }
     }
 
-    totalDistance := 0.0
+    totalDistance := startDistance
     prevA := 0.0
     points = append(points, telemetryPoint{X: x, Y: y, Speed: v, Accel: 0, Distance: totalDistance})
 
