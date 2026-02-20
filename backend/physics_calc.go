@@ -1,30 +1,18 @@
 package main
 
-// physics.go
-// NOTE: This file assumes you already have `package main` (or your existing package) elsewhere,
-// and that your Segment/Track types are already defined exactly once in your codebase.
-// Do NOT add another package declaration here.
-
 import (
 	"fmt"
 	"math"
 )
 
-// calcCurveSpeed returns the max steady-state curve speed given a lateral accel cap.
-// v_max = sqrt((gmax*g) * R)
-func calcCurveSpeed(seg Segment, gravity, gmax float64) float64 {
-    if seg.Radius <= 0 || gravity <= 0 || gmax <= 0 {
-        return 0
-    }
-    return math.Sqrt(gmax * gravity * seg.Radius)
-}
+// --------- Core physics used by both distance + telemetry ----------
 
-// PowerRequired returns wheel mechanical power required to maintain speed v (W).
+// PowerRequired returns wheel mechanical power required to maintain ground speed v (W).
 func PowerRequired(v, m, g, crr, rho, cd, area, theta float64) float64 {
     return (crr*m*g+m*g*math.Sin(theta))*v + 0.5*rho*cd*area*v*v*v
 }
 
-// WheelPowerEV returns available wheel mechanical power (W) given torque + power caps.
+// WheelPowerEV returns available wheel mechanical power (W) given torque + pack power caps.
 func WheelPowerEV(v, tMax, pMax, rWheel, eta float64) float64 {
     if v <= 0 || rWheel <= 0 || eta <= 0 || tMax <= 0 || pMax <= 0 {
         return 0
@@ -40,9 +28,6 @@ func WheelPowerEV(v, tMax, pMax, rWheel, eta float64) float64 {
 
 // DistanceForSpeedEV computes the maximum distance (m) achievable at constant speed v,
 // given battery + solar, and checks feasibility vs wheel power available.
-//
-// Units:
-// batteryWh [Wh], solarWhPerMin [Wh/min], raceDayMin [min], Pmax [W], etc.
 func DistanceForSpeedEV(
     v float64,
     batteryWh, solarWhPerMin, etaDrive, raceDayMin float64,
@@ -65,15 +50,13 @@ func DistanceForSpeedEV(
 
     tSec := raceDayMin * 60.0
 
-    // Battery energy at wheel in Joules:
-    // Wh * 3600 = J, then multiply by etaDrive to get wheel-available energy.
+    // Battery energy at wheel in Joules: Wh*3600 = J, then * etaDrive.
     eBattWheelJ := batteryWh * 3600.0 * etaDrive
 
-    // Solar power at wheel in Watts:
-    // (Wh/min) * (3600 J/Wh) / (60 s/min) = (Wh/min) * 60 = W, then * etaDrive.
+    // Solar power at wheel in Watts: (Wh/min)*60 = W, then * etaDrive.
     pSolarWheel := solarWhPerMin * 60.0 * etaDrive
 
-    // If solar alone covers demand, can run full race duration.
+    // If solar alone covers demand, can run full duration.
     if preq <= pSolarWheel {
         return v * tSec, true
     }
@@ -88,6 +71,101 @@ func DistanceForSpeedEV(
     }
 
     return v * tEnd, true
+}
+
+// coastDistanceToSpeed returns distance (m) needed to coast from v0 down to v1 (v1 < v0)
+// using a drag+rolling closed-form model.
+func coastDistanceToSpeed(v0, v1, cd, crr, gravity, mass, area, rho float64) float64 {
+    if v1 <= 0 || v0 <= 0 || v1 >= v0 {
+        return 0
+    }
+    if cd <= 0 || area <= 0 || rho <= 0 || mass <= 0 || gravity <= 0 {
+        return 0
+    }
+
+    vi2 := v0 * v0
+    vf2 := v1 * v1
+
+    startTerm := (rho*cd*area)/(2*mass)*vi2 + (crr * gravity)
+    endTerm := (rho*cd*area)/(2*mass)*vf2 + (crr * gravity)
+    if startTerm <= 0 || endTerm <= 0 {
+        return 0
+    }
+
+    return (mass / (rho * cd * area)) * math.Log(startTerm/endTerm)
+}
+
+// accelAtSpeed returns longitudinal acceleration (m/s^2) available at speed v,
+// limited by power/torque and reduced by resistive forces.
+func accelAtSpeed(
+    v float64,
+    vMin float64,
+    rWheel float64,
+    Tmax float64,
+    Pmax float64,
+    etaDrive float64,
+    m float64,
+    g float64,
+    Crr float64,
+    rho float64,
+    Cd float64,
+    A float64,
+    theta float64,
+) float64 {
+    vEff := math.Max(v, vMin)
+
+    pAvailWheel := WheelPowerEV(v, Tmax, Pmax, rWheel, etaDrive)
+    fDrive := pAvailWheel / vEff
+    if v < vMin && rWheel > 0 {
+        fDrive = Tmax / rWheel
+    }
+
+    pRes := PowerRequired(v, m, g, Crr, rho, Cd, A, theta)
+    fRes := pRes / vEff
+
+    return (fDrive - fRes) / m
+}
+
+// updateSpeed updates speed given constant accel a over distance ds using v^2 = v^2 + 2 a ds.
+func updateSpeed(v float64, a float64, ds float64) float64 {
+    if a == 0 {
+        return v
+    }
+    v2 := v*v + 2*a*ds
+    if v2 <= 0 {
+        return 0
+    }
+    return math.Sqrt(v2)
+}
+
+// coastDecel returns the deceleration (negative m/s^2) when applying zero drive power,
+// due to rolling resistance + aero + grade (via PowerRequired).
+func coastDecel(
+    v float64,
+    vMin float64,
+    m float64,
+    g float64,
+    Crr float64,
+    rho float64,
+    Cd float64,
+    A float64,
+    theta float64,
+) float64 {
+    vEff := math.Max(v, vMin)
+    pRes := PowerRequired(v, m, g, Crr, rho, Cd, A, theta)
+    fRes := pRes / vEff
+    return -fRes / m
+}
+
+// --------- Optional curve/coast utilities (only needed if you still use Segment/Track elsewhere) ----------
+
+// calcCurveSpeed returns the max steady-state curve speed given a lateral accel cap.
+// v_max = sqrt((gmax*g) * R)
+func calcCurveSpeed(seg Segment, gravity, gmax float64) float64 {
+    if seg.Radius <= 0 || gravity <= 0 || gmax <= 0 {
+        return 0
+    }
+    return math.Sqrt(gmax * gravity * seg.Radius)
 }
 
 // calcCoastDistance estimates distance (m) needed to coast from currentSpeed down to the
@@ -125,31 +203,6 @@ func calcCoastDistance(
     return (mass / (rho * cd * area)) * lnTerm
 }
 
-// coastDistanceToSpeed returns distance (m) needed to coast from v0 down to v1 (v1 < v0)
-// using the same drag+rolling closed-form used in calcCoastDistance.
-func coastDistanceToSpeed(v0, v1, cd, crr, gravity, mass, area, rho float64) float64 {
-    if v1 <= 0 || v0 <= 0 || v1 >= v0 {
-        return 0
-    }
-    if cd <= 0 || area <= 0 || rho <= 0 || mass <= 0 || gravity <= 0 {
-        return 0
-    }
-
-    vi2 := v0 * v0
-    vf2 := v1 * v1
-
-    startTerm := (rho*cd*area)/(2*mass)*vi2 + (crr * gravity)
-    endTerm := (rho*cd*area)/(2*mass)*vf2 + (crr * gravity)
-    if startTerm <= 0 || endTerm <= 0 {
-        return 0
-    }
-
-    return (mass / (rho * cd * area)) * math.Log(startTerm/endTerm)
-}
-
-// coastConservation computes energy saved (Wh) by coasting for distanceM,
-// assuming you otherwise would have spent cruiseWhPerM, but instead spend bottomWhPerM.
-// Since these are Wh/m, savedWh = (Wh/m)*m.
 func coastConservation(cruiseWhPerM, bottomWhPerM, distanceM float64) float64 {
     if distanceM <= 0 {
         return 0
@@ -157,8 +210,6 @@ func coastConservation(cruiseWhPerM, bottomWhPerM, distanceM float64) float64 {
     return (cruiseWhPerM - bottomWhPerM) * distanceM
 }
 
-// curveAccelEnergy computes total energy (Wh) to accelerate from initSpeed to cruiseSpeed
-// under constant accel, including aero drag and rolling resistance.
 func curveAccelEnergy(
     mass float64,
     area float64,
@@ -180,15 +231,14 @@ func curveAccelEnergy(
     vi := initSpeed
     vf := cruiseSpeed
 
-    deltaKE := 0.5 * mass * (vf*vf - vi*vi)          // J
-    distance := (vf*vf - vi*vi) / (2 * accel)        // m
-    eDrag := (0.5 * rho * cd * area / accel) * (math.Pow(vf, 4)-math.Pow(vi, 4)) / 4.0 // J
-    eRoll := crr * mass * gravity * distance          // J
+    deltaKE := 0.5 * mass * (vf*vf - vi*vi) // J
+    distance := (vf*vf - vi*vi) / (2 * accel)
+    eDrag := (0.5*rho*cd*area/accel)*(math.Pow(vf, 4)-math.Pow(vi, 4)) / 4.0
+    eRoll := crr * mass * gravity * distance
 
-    return (deltaKE + eDrag + eRoll) / 3600.0 // Wh
+    return (deltaKE + eDrag + eRoll) / 3600.0
 }
 
-// netCurveLosses returns (energyUsed - energySaved) in Wh for a “coast into curve then accel out”.
 func netCurveLosses(
     mass float64,
     area float64,
@@ -210,8 +260,7 @@ func netCurveLosses(
     return energyUsedWh - energySavedWh
 }
 
-// simulateCoast is a simple console test of the coast + curve-loss model.
-// It uses your existing Track/Segment definitions.
+// simulateCoast is a console test helper.
 func simulateCoast(raceTrack Track) {
     for i := 0; i < len(raceTrack.Segments); i++ {
         if i+1 == len(raceTrack.Segments) {
@@ -241,7 +290,6 @@ func simulateCoast(raceTrack Track) {
             continue
         }
 
-        // If current segment is a straight with known length, sanity-check available distance.
         if raceTrack.Segments[i].Angle == 0 && raceTrack.Segments[i].Length > 0 && dToCoast > raceTrack.Segments[i].Length {
             fmt.Println("Not enough track to slow down:", dToCoast, "m needed")
             continue
@@ -249,7 +297,6 @@ func simulateCoast(raceTrack Track) {
 
         fmt.Println("Coast to target with:", dToCoast, "m")
 
-        // Cruise energy at constant speed (Wh/m). theta assumed 0 for now.
         cruiseWhPerM := PowerRequired(cruiseSpeed, mass, gravity, crr, rho, cd, area, 0) / cruiseSpeed / 3600.0
         fmt.Println("Cruise Energy in Wh/m:", cruiseWhPerM)
 

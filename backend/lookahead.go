@@ -32,7 +32,7 @@ func totalLapLengthM(segments []trackSegment) float64 {
     return sum
 }
 
-// Adds a constraint at every segment start where local vCap drops.
+// buildConstraints adds a constraint at every segment start where the local lateral cap drops.
 // straight: vCap = +Inf
 // curve:    vCap = sqrt(gmax*g*R)
 func buildConstraints(segments []trackSegment, gmax, g float64) []speedConstraint {
@@ -58,7 +58,7 @@ func buildConstraints(segments []trackSegment, gmax, g float64) []speedConstrain
     return constraints
 }
 
-// Non-wrap: next constraint strictly ahead.
+// nextConstraint finds the next constraint strictly ahead (no wrap).
 func nextConstraint(constraints []speedConstraint, curDist float64) (float64, float64, bool) {
     for _, c := range constraints {
         if c.dist > curDist+1e-9 {
@@ -68,7 +68,7 @@ func nextConstraint(constraints []speedConstraint, curDist float64) (float64, fl
     return 0, 0, false
 }
 
-// Wraparound-aware: treat lap as circular.
+// nextConstraintWrap finds the next constraint treating the lap as circular.
 func nextConstraintWrap(constraints []speedConstraint, curDist, lapLength float64) (float64, float64, bool) {
     if len(constraints) == 0 || lapLength <= 0 {
         return 0, 0, false
@@ -86,5 +86,5 @@ func nextConstraintWrap(constraints []speedConstraint, curDist, lapLength float6
     }
 
     c0 := constraints[0]
-    return c0.vLimit, (lapLength - d) + c0.dist, true
+    return c0.vLimit, (lapLength-d)+c0.dist, true
 }

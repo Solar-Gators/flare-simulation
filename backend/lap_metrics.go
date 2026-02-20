@@ -2,29 +2,36 @@ package main
 
 import "math"
 
-func buildTelemetryWithParams(
-    segments []trackSegment,
-    wraparound bool,
-    startFromZero bool,
+type lapMetrics struct {
+    lapTimeSec  float64
+    lapEnergyWh float64
+    ok          bool
+}
 
-    // physics
-    m float64,
-    g float64,
-    Crr float64,
-    rho float64,
-    Cd float64,
-    A float64,
-    theta float64,
+func clamp01(x float64) float64 {
+    if x < 0 {
+        return 0
+    }
+    if x > 1 {
+        return 1
+    }
+    return x
+}
 
-    // EV
-    rWheel float64,
-    Tmax float64,
-    Pmax float64,
-    etaDrive float64,
+func applyJerkLimit(aCmd, aPrev, vNow, ds, vMin, jerkMax float64) float64 {
+    vEff := math.Max(vNow, vMin)
+    dt := ds / vEff
+    maxDeltaA := jerkMax * dt
+    if aCmd > aPrev+maxDeltaA {
+        return aPrev + maxDeltaA
+    }
+    if aCmd < aPrev-maxDeltaA {
+        return aPrev - maxDeltaA
+    }
+    return aCmd
+}
 
-    // cruise target on straights (m/s)
-    baseTarget float64,
-) []telemetryPoint {
+func simulateLapMetrics(segments []trackSegment, req distanceRequest, baseTarget float64) lapMetrics {
     const (
         stepM  = 0.25
         gmax   = 0.8
@@ -37,34 +44,35 @@ func buildTelemetryWithParams(
         leadInM     = 30.0
     )
 
-    points := make([]telemetryPoint, 0, 256)
-    x, y, heading := 0.0, 0.0, 0.0
+    m := req.M
+    g := req.G
+    Crr := req.Crr
+    rho := req.Rho
+    Cd := req.Cd
+    A := req.A
+    theta := req.Theta
 
-    v := 0.5
-    if startFromZero {
-        v = 0.0
-    }
+    rWheel := req.RWheel
+    Tmax := req.Tmax
+    Pmax := req.Pmax
+    eta := req.EtaDrive
 
-    totalDistance := 0.0
-    prevA := 0.0
-    points = append(points, telemetryPoint{X: x, Y: y, Speed: v, Accel: 0, Distance: totalDistance})
-
-    if baseTarget <= 0 {
-        baseTarget = 1.0
+    if baseTarget <= 0 || m <= 0 || g <= 0 || rWheel <= 0 || Tmax <= 0 || Pmax <= 0 || eta <= 0 {
+        return lapMetrics{ok: false}
     }
 
     constraints := buildConstraints(segments, gmax, g)
     lapLength := totalLapLengthM(segments)
 
     getNext := func(distInLap float64) (float64, float64, bool) {
-        if wraparound {
+        if req.Wraparound {
             return nextConstraintWrap(constraints, distInLap, lapLength)
         }
         return nextConstraint(constraints, distInLap)
     }
 
     distInLapFn := func(totalDist float64) float64 {
-        if wraparound && lapLength > 0 {
+        if req.Wraparound && lapLength > 0 {
             d := math.Mod(totalDist, lapLength)
             if d < 0 {
                 d += lapLength
@@ -74,32 +82,37 @@ func buildTelemetryWithParams(
         return totalDist
     }
 
-    clamp01 := func(x float64) float64 {
-        if x < 0 {
+    // pack power used only when a>0 (driving)
+    packPowerForAccel := func(vNow, aNow float64) float64 {
+        if vNow <= 0 || aNow <= 0 {
             return 0
         }
-        if x > 1 {
-            return 1
-        }
-        return x
-    }
 
-    applyJerkLimit := func(aCmd, aPrev, vNow, ds float64) float64 {
-        vEff := math.Max(vNow, vMin)
-        dt := ds / vEff
-        maxDeltaA := jerkMax * dt
-        if aCmd > aPrev+maxDeltaA {
-            return aPrev + maxDeltaA
+        Presist := PowerRequired(vNow, m, g, Crr, rho, Cd, A, theta)
+        Pinert := m * aNow * vNow
+        Pwheel := Presist + Pinert
+        if Pwheel < 0 {
+            Pwheel = 0
         }
-        if aCmd < aPrev-maxDeltaA {
-            return aPrev - maxDeltaA
+
+        PwheelAvail := WheelPowerEV(vNow, Tmax, Pmax, rWheel, eta)
+        if Pwheel > PwheelAvail {
+            Pwheel = PwheelAvail
         }
-        return aCmd
+
+        Ppack := Pwheel / eta
+        if Ppack > Pmax {
+            Ppack = Pmax
+        }
+        if Ppack < 0 {
+            Ppack = 0
+        }
+        return Ppack
     }
 
     cruiseAccelCmd := func(vNow, aLongMax float64) float64 {
         if vNow < baseTarget {
-            aPower := accelAtSpeed(vNow, vMin, rWheel, Tmax, Pmax, etaDrive, m, g, Crr, rho, Cd, A, theta)
+            aPower := accelAtSpeed(vNow, vMin, rWheel, Tmax, Pmax, eta, m, g, Crr, rho, Cd, A, theta)
             return math.Min(aPower, aLongMax)
         }
         if vNow > baseTarget {
@@ -108,6 +121,12 @@ func buildTelemetryWithParams(
         }
         return 0
     }
+
+    v := vMin
+    totalDist := 0.0
+    timeSec := 0.0
+    energyWh := 0.0
+    prevA := 0.0
 
     for _, seg := range segments {
         switch seg.Type {
@@ -119,14 +138,13 @@ func buildTelemetryWithParams(
                 aTotalMax := muTire * g
                 aLongMax := aTotalMax
 
-                distInLap := distInLapFn(totalDistance)
+                distInLap := distInLapFn(totalDist)
                 vLim, dTo, ok := getNext(distInLap)
 
                 var aCmd float64
 
                 if ok && dTo > 0 && vLim > 0 {
                     entryV := vLim * entrySafety
-
                     if v > entryV && entryV > 0 {
                         dNeedCoast := coastDistanceToSpeed(v, entryV, Cd, Crr, g, m, A, rho)
 
@@ -155,18 +173,19 @@ func buildTelemetryWithParams(
                     aCmd = cruiseAccelCmd(v, aLongMax)
                 }
 
-                a := applyJerkLimit(aCmd, prevA, v, ds)
+                a := applyJerkLimit(aCmd, prevA, v, ds, vMin, jerkMax)
+
+                vEff := math.Max(v, vMin)
+                dt := ds / vEff
+                energyWh += (packPowerForAccel(v, a) * dt) / 3600.0
 
                 vNext := updateSpeed(v, a, ds)
                 if vNext > baseTarget {
                     vNext = baseTarget
                 }
 
-                x += ds * math.Cos(heading)
-                y += ds * math.Sin(heading)
-                totalDistance += ds
-                points = append(points, telemetryPoint{X: x, Y: y, Speed: vNext, Accel: a, Distance: totalDistance})
-
+                timeSec += dt
+                totalDist += ds
                 v = vNext
                 prevA = a
                 remaining -= ds
@@ -180,42 +199,19 @@ func buildTelemetryWithParams(
             vCap := math.Sqrt(gmax * g * seg.Radius)
             curveTarget := math.Min(vCap*entrySafety, baseTarget)
 
-            arcLength := seg.Radius * math.Abs(seg.Angle) * math.Pi / 180.0
-            remaining := arcLength
-            isRight := seg.Angle < 0
+            arcLen := seg.Radius * math.Abs(seg.Angle) * math.Pi / 180.0
+            remaining := arcLen
 
             for remaining > 0 {
                 ds := math.Min(stepM, remaining)
-
-                delta := ds / seg.Radius
-                if !isRight {
-                    delta = -delta
-                }
-
-                normalX := -math.Sin(heading)
-                normalY := math.Cos(heading)
-                if !isRight {
-                    normalX = math.Sin(heading)
-                    normalY = -math.Cos(heading)
-                }
-
-                centerX := x + seg.Radius*normalX
-                centerY := y + seg.Radius*normalY
-                dx := x - centerX
-                dy := y - centerY
-
-                c := math.Cos(delta)
-                s := math.Sin(delta)
-                x = centerX + dx*c - dy*s
-                y = centerY + dx*s + dy*c
-                heading += delta
 
                 aLat := (v * v) / seg.Radius
                 aTotalMax := muTire * g
                 aLongMax := math.Sqrt(math.Max(0, aTotalMax*aTotalMax-aLat*aLat))
 
-                distInLap := distInLapFn(totalDistance)
+                distInLap := distInLapFn(totalDist)
                 nextVLim, _, ok := getNext(distInLap)
+
                 targetSpeed := curveTarget
                 if ok && nextVLim > 0 {
                     targetSpeed = math.Min(targetSpeed, nextVLim*entrySafety)
@@ -245,22 +241,25 @@ func buildTelemetryWithParams(
                     aCmd = math.Max(aReq, aCmd)
                     aCmd = math.Max(aCmd, -aLongMax)
                 } else if v < targetSpeed {
-                    aPower := accelAtSpeed(v, vMin, rWheel, Tmax, Pmax, etaDrive, m, g, Crr, rho, Cd, A, theta)
+                    aPower := accelAtSpeed(v, vMin, rWheel, Tmax, Pmax, eta, m, g, Crr, rho, Cd, A, theta)
                     aCmd = math.Min(aPower, aLongMax)
                 } else {
                     aCmd = 0
                 }
 
-                a := applyJerkLimit(aCmd, prevA, v, ds)
+                a := applyJerkLimit(aCmd, prevA, v, ds, vMin, jerkMax)
+
+                vEff := math.Max(v, vMin)
+                dt := ds / vEff
+                energyWh += (packPowerForAccel(v, a) * dt) / 3600.0
 
                 vNext := updateSpeed(v, a, ds)
                 if vNext > targetSpeed {
                     vNext = targetSpeed
                 }
 
-                totalDistance += ds
-                points = append(points, telemetryPoint{X: x, Y: y, Speed: vNext, Accel: a, Distance: totalDistance})
-
+                timeSec += dt
+                totalDist += ds
                 v = vNext
                 prevA = a
                 remaining -= ds
@@ -268,5 +267,12 @@ func buildTelemetryWithParams(
         }
     }
 
-    return points
+    if timeSec <= 0 || math.IsNaN(timeSec) || math.IsInf(timeSec, 0) {
+        return lapMetrics{ok: false}
+    }
+    if energyWh < 0 || math.IsNaN(energyWh) || math.IsInf(energyWh, 0) {
+        return lapMetrics{ok: false}
+    }
+
+    return lapMetrics{lapTimeSec: timeSec, lapEnergyWh: energyWh, ok: true}
 }

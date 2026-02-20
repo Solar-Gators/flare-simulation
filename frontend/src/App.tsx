@@ -1,11 +1,3 @@
-// src/App.tsx (REPLACE file contents with this)
-// Changes:
-// - One checkbox: wraparoundLookahead (when off, backend will startFromZero=true)
-// - When you press "Compute", it calls BOTH:
-//   1) POST /distance to update the displayed distance
-//   2) GET  /track/telemetry?wraparound=... to update the map
-// - Button text changed from "Compute Distance" to "Compute"
-
 import type { FormEvent, MouseEvent } from 'react'
 import { useMemo, useState } from 'react'
 import './App.css'
@@ -37,7 +29,6 @@ type FieldDef = {
 }
 
 const initialFields: FieldDef[] = [
-  { name: 'v', label: 'v (m/s)', step: '0.1', value: '20' },
   { name: 'batteryWh', label: 'batteryWh', step: '1', value: '5000' },
   { name: 'solarWhPerMin', label: 'solarWhPerMin', step: '0.1', value: '5' },
   { name: 'etaDrive', label: 'etaDrive', step: '0.01', value: '0.9' },
@@ -66,13 +57,28 @@ function speedToColor(speed: number, minSpeed: number, maxSpeed: number): string
   return `hsl(${hue}, 80%, 48%)`
 }
 
-async function postTelemetry(payload: Record<string, number>, wraparound: boolean) {
-  const body = { ...payload, wraparound }
+async function postDistance(payload: Record<string, number>, wraparound: boolean) {
+  const response = await fetch('http://localhost:8080/distance', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...payload, wraparound }),
+  })
+  const data = await response.json()
+  if (!response.ok || !data.ok) {
+    throw new Error(data?.message || 'Request failed.')
+  }
+  return data as { distanceM: number; optimalV: number; remainingWh: number; ok: boolean }
+}
 
+async function postTelemetry(
+  payload: Record<string, number>,
+  wraparound: boolean,
+  baseTarget: number,
+) {
   const response = await fetch('http://localhost:8080/track/telemetry', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...payload, wraparound, baseTarget }),
   })
   const data = await response.json()
   if (!response.ok || !data.ok || !Array.isArray(data.points)) {
@@ -81,24 +87,14 @@ async function postTelemetry(payload: Record<string, number>, wraparound: boolea
   return data.points as TelemetryPoint[]
 }
 
-async function postDistance(payload: Record<string, number>) {
-  const response = await fetch('http://localhost:8080/distance', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
-  const data = await response.json()
-  if (!response.ok || !data.ok) {
-    throw new Error(data?.message || 'Request failed.')
-  }
-  return data.distanceM as number
-}
-
 function App() {
   const [fields, setFields] = useState(initialFields)
   const [wraparoundLookahead, setWraparoundLookahead] = useState(true)
 
   const [result, setResult] = useState('--')
+  const [optimalV, setOptimalV] = useState<number | null>(null)
+  const [remainingWh, setRemainingWh] = useState<number | null>(null)
+
   const [status, setStatus] = useState('Fill inputs and press Compute.')
   const [trackStatus, setTrackStatus] = useState('Track not loaded yet.')
   const [telemetry, setTelemetry] = useState<TelemetryPoint[]>([])
@@ -143,14 +139,15 @@ function App() {
       height + padding * 2,
     ].join(' ')
 
-    const nextSegments = telemetry.slice(1).map((point, index) => {
-      const prev = telemetry[index]
+    const nextSegments = telemetry.slice(1).map((pt, i) => {
+      const prev = telemetry[i]
       return {
-        d: `M ${prev.x} ${prev.y} L ${point.x} ${point.y}`,
-        speed: point.speed,
-        accel: point.accel,
-        distance: point.distance,
-        color: speedToColor(point.speed, minSpeed, maxSpeed),
+        key: `${prev.distance}-${pt.distance}-${i}`,
+        d: `M ${prev.x} ${prev.y} L ${pt.x} ${pt.y}`,
+        speed: pt.speed,
+        accel: pt.accel,
+        distance: pt.distance,
+        color: speedToColor(pt.speed, minSpeed, maxSpeed),
       }
     })
 
@@ -182,14 +179,15 @@ function App() {
     }
 
     try {
-      // Run both backend calls on Compute
-      const [distanceM, points] = await Promise.all([
-        postDistance(payload),
-        postTelemetry(payload, wraparoundLookahead),
-      ])
+      const distResp = await postDistance(payload, wraparoundLookahead)
 
-      setResult(Number(distanceM).toFixed(2))
+      setResult(Number(distResp.distanceM).toFixed(2))
+      setOptimalV(distResp.optimalV)
+      setRemainingWh(distResp.remainingWh)
+
+      const points = await postTelemetry(payload, wraparoundLookahead, distResp.optimalV)
       setTelemetry(points)
+
       setStatus('Success.')
       setTrackStatus(`Telemetry points: ${points.length}`)
     } catch (err) {
@@ -223,7 +221,7 @@ function App() {
     <div className="shell">
       <header>
         <h1>Flare Distance Calculator</h1>
-        <p>Enter your simulation values and fetch the predicted distance.</p>
+        <p>Press Compute to optimize speed for full battery depletion by race end.</p>
       </header>
 
       <section className="panel">
@@ -239,7 +237,7 @@ function App() {
                   max={field.max}
                   name={field.name}
                   value={field.value}
-                  onChange={(event) => handleInputChange(field.name, event.target.value)}
+                  onChange={(e) => handleInputChange(field.name, e.target.value)}
                 />
               </label>
             ))}
@@ -261,7 +259,21 @@ function App() {
             <div className="result">
               Distance: <strong>{result}</strong> m
             </div>
-            <div className="status">{status}</div>
+            <div className="status">
+              {status}
+              {optimalV !== null && (
+                <>
+                  {' '}
+                  · Optimal v: <strong>{optimalV.toFixed(2)}</strong> m/s
+                </>
+              )}
+              {remainingWh !== null && (
+                <>
+                  {' '}
+                  · Remaining: <strong>{remainingWh.toFixed(1)}</strong> Wh
+                </>
+              )}
+            </div>
           </div>
         </form>
       </section>
@@ -270,17 +282,15 @@ function App() {
         <h2>Track Preview</h2>
         <svg className="track-frame" viewBox={viewBox} role="img" aria-label="Track visualization">
           <g className="track-layer">
-            {segments.map((segment, index) => (
+            {segments.map((seg) => (
               <path
-                key={`${segment.distance}-${index}`}
-                d={segment.d}
+                key={seg.key}
+                d={seg.d}
                 fill="none"
-                stroke={segment.color}
+                stroke={seg.color}
                 strokeWidth={6}
                 strokeLinecap="round"
-                onMouseMove={(event) =>
-                  handleSegmentMove(event, segment.speed, segment.accel, segment.distance)
-                }
+                onMouseMove={(e) => handleSegmentMove(e, seg.speed, seg.accel, seg.distance)}
                 onMouseLeave={handleSegmentLeave}
               />
             ))}

@@ -1,67 +1,65 @@
 package main
 
 import (
-	//used for decoding JSON into distanceRequest struct
-	//also for encoding struct back into JSON format for HTTP response
 	"encoding/json"
-	//allows for original sim to be called via terminal using flag
 	"flag"
 	"fmt"
 	"log"
 	"math"
-	"net/http" //lets go program talk over web --> Receive requests and send responses
+	"net/http"
 )
 
 type distanceRequest struct {
-	//these are all struct tags
-	//tells go how struct maps to JSON for encoding and decoding
+    BatteryWh     float64 `json:"batteryWh"`
+    SolarWhPerMin float64 `json:"solarWhPerMin"`
+    EtaDrive      float64 `json:"etaDrive"`
+    RaceDayMin    float64 `json:"raceDayMin"`
 
-	V             float64 `json:"v"`
-	BatteryWh     float64 `json:"batteryWh"`
-	SolarWhPerMin float64 `json:"solarWhPerMin"`
-	EtaDrive      float64 `json:"etaDrive"`
-	RaceDayMin    float64 `json:"raceDayMin"`
-	RWheel        float64 `json:"rWheel"`
-	Tmax          float64 `json:"tMax"`
-	Pmax          float64 `json:"pMax"`
-	M             float64 `json:"m"`
-	G             float64 `json:"g"`
-	Crr           float64 `json:"cRr"`
-	Rho           float64 `json:"rho"`
-	Cd            float64 `json:"cD"`
-	A             float64 `json:"a"`
-	Theta         float64 `json:"theta"`
+    RWheel float64 `json:"rWheel"`
+    Tmax   float64 `json:"tMax"`
+    Pmax   float64 `json:"pMax"`
+
+    M     float64 `json:"m"`
+    G     float64 `json:"g"`
+    Crr   float64 `json:"cRr"`
+    Rho   float64 `json:"rho"`
+    Cd    float64 `json:"cD"`
+    A     float64 `json:"a"`
+    Theta float64 `json:"theta"`
+
+    Wraparound bool `json:"wraparound"`
 }
 
 type distanceResponse struct {
-	DistanceM float64 `json:"distanceM"`
-	OK        bool    `json:"ok"`
-	Message   string  `json:"message,omitempty"`
+    DistanceM   float64 `json:"distanceM"`
+    OptimalV    float64 `json:"optimalV"`
+    RemainingWh float64 `json:"remainingWh"`
+    OK          bool    `json:"ok"`
+    Message     string  `json:"message,omitempty"`
 }
 
 type trackSegment struct {
-	Type      string  `json:"type"`
-	Length    float64 `json:"length,omitempty"`
-	Radius    float64 `json:"radius,omitempty"`
-	Angle     float64 `json:"angle,omitempty"`
-	Direction string  `json:"direction,omitempty"`
+    Type      string  `json:"type"`
+    Length    float64 `json:"length,omitempty"`
+    Radius    float64 `json:"radius,omitempty"`
+    Angle     float64 `json:"angle,omitempty"`
+    Direction string  `json:"direction,omitempty"`
 }
 
 type trackResponse struct {
-	Segments []trackSegment `json:"segments"`
+    Segments []trackSegment `json:"segments"`
 }
 
 type telemetryPoint struct {
-	X        float64 `json:"x"`
-	Y        float64 `json:"y"`
-	Speed    float64 `json:"speed"`
-	Accel    float64 `json:"accel"`
-	Distance float64 `json:"distance"`
+    X        float64 `json:"x"`
+    Y        float64 `json:"y"`
+    Speed    float64 `json:"speed"`
+    Accel    float64 `json:"accel"`
+    Distance float64 `json:"distance"`
 }
 
 type telemetryRequest struct {
-    // same fields as distanceRequest
-    V             float64 `json:"v"`
+    // same inputs as /distance
     BatteryWh     float64 `json:"batteryWh"`
     SolarWhPerMin float64 `json:"solarWhPerMin"`
     EtaDrive      float64 `json:"etaDrive"`
@@ -76,9 +74,10 @@ type telemetryRequest struct {
     Cd            float64 `json:"cD"`
     A             float64 `json:"a"`
     Theta         float64 `json:"theta"`
+    Wraparound    bool    `json:"wraparound"`
 
-    // telemetry-specific options
-    Wraparound bool `json:"wraparound"`
+    // provided by frontend from /distance result
+    BaseTarget float64 `json:"baseTarget"`
 }
 
 type telemetryResponse struct {
@@ -87,119 +86,148 @@ type telemetryResponse struct {
     Message string           `json:"message,omitempty"`
 }
 
-var optimalCruiseSpeed float64
-
-// relocated main bc this is new entry point
-// sim now becomes function
 func main() {
-	mode := flag.String("mode", "server", "mode: server or simulate") //checking for user flags for sim for server
-	addr := flag.String("addr", ":8080", "server listen address")     //checking flag to choose different network port in cases 8080 is in use
-	flag.Parse()                                                      //fills pointers (mode and addr) with values based on terminal inputs
+    mode := flag.String("mode", "server", "mode: server or simulate")
+    addr := flag.String("addr", ":8080", "server listen address")
+    flag.Parse()
 
-	//if flag is simulate run sim
-	if *mode == "simulate" {
-		runSimulation()
-		return
-	}
-	//find cruise speed
-	optimalCruiseSpeed = computeOptimalSpeed()
-	//empty router (router is meant to map url to handler)
-	mux := http.NewServeMux()                    //request router (empty --> no route to go), serve multiplexer -->takes http requests and routes it
-	mux.HandleFunc("/distance", distanceHandler) // handler that router directs oncoming requests
-	mux.HandleFunc("/track", trackHandler)
-	mux.HandleFunc("/track/telemetry", trackTelemetryHandler)
+    if *mode == "simulate" {
+        runSimulation()
+        return
+    }
 
-	log.Printf("listening on %s", *addr) //%s is replaced with dereferenced addr
+    mux := http.NewServeMux()
+    mux.HandleFunc("/distance", distanceHandler)
+    mux.HandleFunc("/track", trackHandler)
+    mux.HandleFunc("/track/telemetry", trackTelemetryHandler)
 
-	//handles errors
-	if err := http.ListenAndServe(*addr, mux); err != nil {
-		log.Fatal(err)
-	}
+    log.Printf("listening on %s", *addr)
+    if err := http.ListenAndServe(*addr, mux); err != nil {
+        log.Fatal(err)
+    }
 }
 
-// is the HTTP handler
-// w --> is outgoing http response (write)
-// r --> incoming http request. pointer to struct with everything client sent (read)
 func distanceHandler(w http.ResponseWriter, r *http.Request) {
-	addCORSHeaders(w)
-	//check to see if OPTIONS request then do nothing (this happens before API request)
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	//handler is called again (two http requests are made)
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+    addCORSHeaders(w)
+    if r.Method == http.MethodOptions {
+        w.WriteHeader(http.StatusNoContent)
+        return
+    }
+    if r.Method != http.MethodPost {
+        http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+        return
+    }
 
-	var req distanceRequest        // holds parsed JSON
-	dec := json.NewDecoder(r.Body) //decode JSON and read
-	dec.DisallowUnknownFields()    //decoding will fail if JSON has fields that are not valid
-	if err := dec.Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, distanceResponse{OK: false, Message: "invalid JSON body"})
-		return
-	}
+    var req distanceRequest
+    dec := json.NewDecoder(r.Body)
+    dec.DisallowUnknownFields()
+    if err := dec.Decode(&req); err != nil {
+        writeJSON(w, http.StatusBadRequest, distanceResponse{OK: false, Message: "invalid JSON body"})
+        return
+    }
 
-	if req.V <= 0 || req.BatteryWh <= 0 || req.EtaDrive <= 0 || req.RaceDayMin <= 0 ||
-		req.RWheel <= 0 || req.Tmax <= 0 || req.Pmax <= 0 || req.M <= 0 || req.G <= 0 ||
-		req.Crr < 0 || req.Rho <= 0 || req.Cd <= 0 || req.A <= 0 {
-		writeJSON(w, http.StatusBadRequest, distanceResponse{OK: false, Message: "missing or invalid input values"})
-		return
-	}
-	//run sim if everything is valid
-	distance, ok := DistanceForSpeedEV(
-		req.V,
-		req.BatteryWh, req.SolarWhPerMin, req.EtaDrive, req.RaceDayMin,
-		req.RWheel, req.Tmax, req.Pmax,
-		req.M, req.G, req.Crr, req.Rho, req.Cd, req.A, req.Theta,
-	)
-	if !ok {
-		writeJSON(w, http.StatusBadRequest, distanceResponse{OK: false, Message: "inputs are not feasible for the model"})
-		return
-	}
+    if req.BatteryWh <= 0 || req.EtaDrive <= 0 || req.RaceDayMin <= 0 ||
+        req.RWheel <= 0 || req.Tmax <= 0 || req.Pmax <= 0 || req.M <= 0 || req.G <= 0 ||
+        req.Crr < 0 || req.Rho <= 0 || req.Cd <= 0 || req.A <= 0 {
+        writeJSON(w, http.StatusBadRequest, distanceResponse{OK: false, Message: "missing or invalid input values"})
+        return
+    }
 
-	writeJSON(w, http.StatusOK, distanceResponse{DistanceM: distance, OK: true})
+    segments := defaultTrackSegments()
+    lapLen := totalLapLengthM(segments)
+
+    bestV, remainingWh, ok := findOptimalVForFullDepletion(segments, req, 1.0, 40.0)
+    if !ok {
+        writeJSON(w, http.StatusBadRequest, distanceResponse{OK: false, Message: "could not optimize speed for full depletion"})
+        return
+    }
+
+    m := simulateLapMetrics(segments, req, bestV)
+    if !m.ok || m.lapTimeSec <= 0 {
+        writeJSON(w, http.StatusBadRequest, distanceResponse{OK: false, Message: "lap simulation failed"})
+        return
+    }
+
+    raceSec := req.RaceDayMin * 60.0
+    laps := raceSec / m.lapTimeSec
+    distanceM := laps * lapLen
+
+    writeJSON(w, http.StatusOK, distanceResponse{
+        DistanceM:   distanceM,
+        OptimalV:    bestV,
+        RemainingWh: remainingWh,
+        OK:          true,
+    })
 }
 
-// adds specific http response headers
-// CORS = Cross Origin Resource Sharing
-// Rule for controlling which websites can talk to which servers
-// OPTIONS: asks for permission "what am i allowed to do?" ex. "can i send POST", "can i send JSON"
-// POST --> client sends data and then server process it
+func trackHandler(w http.ResponseWriter, r *http.Request) {
+    addCORSHeaders(w)
+    if r.Method == http.MethodOptions {
+        w.WriteHeader(http.StatusNoContent)
+        return
+    }
+    if r.Method != http.MethodGet {
+        http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+        return
+    }
+    writeJSON(w, http.StatusOK, trackResponse{Segments: defaultTrackSegments()})
+}
+
+func trackTelemetryHandler(w http.ResponseWriter, r *http.Request) {
+    addCORSHeaders(w)
+    if r.Method == http.MethodOptions {
+        w.WriteHeader(http.StatusNoContent)
+        return
+    }
+    if r.Method != http.MethodPost {
+        http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+        return
+    }
+
+    var req telemetryRequest
+    dec := json.NewDecoder(r.Body)
+    dec.DisallowUnknownFields()
+    if err := dec.Decode(&req); err != nil {
+        writeJSON(w, http.StatusBadRequest, telemetryResponse{OK: false, Message: "invalid JSON body"})
+        return
+    }
+
+    if req.EtaDrive <= 0 || req.RaceDayMin <= 0 ||
+        req.RWheel <= 0 || req.Tmax <= 0 || req.Pmax <= 0 || req.M <= 0 || req.G <= 0 ||
+        req.Crr < 0 || req.Rho <= 0 || req.Cd <= 0 || req.A <= 0 ||
+        req.BaseTarget <= 0 {
+        writeJSON(w, http.StatusBadRequest, telemetryResponse{OK: false, Message: "missing or invalid input values"})
+        return
+    }
+
+    startFromZero := !req.Wraparound
+
+    points := buildTelemetryWithParams(
+        defaultTrackSegments(),
+        req.Wraparound,
+        startFromZero,
+        req.M, req.G, req.Crr, req.Rho, req.Cd, req.A, req.Theta,
+        req.RWheel, req.Tmax, req.Pmax, req.EtaDrive,
+        req.BaseTarget,
+    )
+
+    writeJSON(w, http.StatusOK, telemetryResponse{Points: points, OK: true})
+}
+
 func addCORSHeaders(w http.ResponseWriter) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")                   //any website can make request to this backend
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS") //the frontend can make POST (API call) and OPTIONS (CORS preflight)request
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")       //frontend can send content type headers
-	w.Header().Set("Content-Type", "application/json")                   //response body is in JSON
+    w.Header().Set("Access-Control-Allow-Origin", "*")
+    w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+    w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+    w.Header().Set("Content-Type", "application/json")
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {
-	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(payload); err != nil {
-		fmt.Fprint(w, `{"ok":false,"message":"failed to encode response"}`)
-	}
+    w.WriteHeader(status)
+    if err := json.NewEncoder(w).Encode(payload); err != nil {
+        fmt.Fprint(w, `{"ok":false,"message":"failed to encode response"}`)
+    }
 }
 
-// http handler for track GET request
-// http request has for major parts: request line (http method, url, verison), headers
-// (format for body, how long body is), blank line, and body (optional and is a stream)
-func trackHandler(w http.ResponseWriter, r *http.Request) {
-	addCORSHeaders(w)
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	resp := trackResponse{Segments: defaultTrackSegments()}
-	writeJSON(w, http.StatusOK, resp)
-}
-
-// setting tracks
 func defaultTrackSegments() []trackSegment {
 	return []trackSegment{
 		{Type: "straight", Length: 228.0829302},
@@ -295,391 +323,4 @@ func defaultTrackSegments() []trackSegment {
 		{Type: "curve", Radius: 15.25086386 * 180.0 / (math.Pi * math.Abs(-12.54)), Angle: -12.54},
 		{Type: "curve", Radius: 16.37871458 * 180.0 / (math.Pi * math.Abs(-24.75)), Angle: -24.75},
 	}
-}
-
-func trackTelemetryHandler(w http.ResponseWriter, r *http.Request) {
-    addCORSHeaders(w)
-    if r.Method == http.MethodOptions {
-        w.WriteHeader(http.StatusNoContent)
-        return
-    }
-    if r.Method != http.MethodPost {
-        http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-        return
-    }
-
-    var req telemetryRequest
-    dec := json.NewDecoder(r.Body)
-    dec.DisallowUnknownFields()
-    if err := dec.Decode(&req); err != nil {
-        writeJSON(w, http.StatusBadRequest, telemetryResponse{OK: false, Message: "invalid JSON body"})
-        return
-    }
-
-    // Basic validation (same spirit as /distance; loosen if you want)
-    if req.EtaDrive <= 0 || req.RaceDayMin <= 0 ||
-        req.RWheel <= 0 || req.Tmax <= 0 || req.Pmax <= 0 || req.M <= 0 || req.G <= 0 ||
-        req.Crr < 0 || req.Rho <= 0 || req.Cd <= 0 || req.A <= 0 {
-        writeJSON(w, http.StatusBadRequest, telemetryResponse{OK: false, Message: "missing or invalid input values"})
-        return
-    }
-
-    // If wraparound is OFF, we use your convention: start from 0 speed.
-    startFromZero := !req.Wraparound
-
-    segments := defaultTrackSegments()
-
-    // IMPORTANT: call a telemetry builder that uses req.* instead of hard-coded constants.
-    points := buildTelemetryFromRequest(segments, req, startFromZero)
-
-    writeJSON(w, http.StatusOK, telemetryResponse{Points: points, OK: true})
-}
-
-func buildTelemetryFromRequest(segments []trackSegment, req telemetryRequest, startFromZero bool) []telemetryPoint {
-    // Here we pass the parameters down to a parameterized telemetry function.
-    // You will create buildTelemetryWithParams next (small refactor from your current buildTelemetry).
-    return buildTelemetryWithParams(
-        segments,
-        req.Wraparound,
-        startFromZero,
-
-        // vehicle/physics inputs
-        req.M, req.G, req.Crr, req.Rho, req.Cd, req.A, req.Theta,
-
-        // EV inputs
-        req.RWheel, req.Tmax, req.Pmax, req.EtaDrive,
-
-        // cruise target (use req.V as the baseTarget for the map)
-        req.V,
-    )
-}
-
-func buildTelemetry(segments []trackSegment, wraparound, startFromZero bool) []telemetryPoint {
-    const (
-        stepM    = 0.25 // CHANGED from 1.0
-        gmax     = 0.8
-        muTire   = 0.9
-        maxSpeed = 40.0
-        vMin     = 0.5
-
-        // jerk limit (m/s^3). Since we step by distance, we convert to accel-step via dt ~= ds/max(v,vMin)
-        jerkMax = 1.5
-
-        A        = 0.456
-        Cd       = 0.21
-        rho      = 1.225
-        Crr      = 0.0015
-        m        = 285.0
-        g        = 9.81
-        theta    = 0.0
-        rWheel   = 0.2792
-        Tmax     = 45.0
-        Pmax     = 10000.0
-        etaDrive = 0.90
-    )
-
-    points := make([]telemetryPoint, 0, 256)
-    x, y, heading := 0.0, 0.0, 0.0
-
-    v := 0.5
-    if startFromZero {
-        v = 0.0
-    }
-
-    totalDistance := 0.0
-    prevA := 0.0
-    points = append(points, telemetryPoint{X: x, Y: y, Speed: v, Accel: 0, Distance: totalDistance})
-
-    // For telemetry, make the displayed speed map reflect the user's requested v.
-    // If you want to keep optimalCruiseSpeed logic, replace baseTarget accordingly.
-    baseTarget := maxSpeed
-    if optimalCruiseSpeed > 0 {
-        baseTarget = optimalCruiseSpeed
-    }
-    if maxSpeed > 0 && baseTarget > maxSpeed {
-        baseTarget = maxSpeed
-    }
-
-    constraints := buildConstraints(segments, gmax, g)
-    lapLength := totalLapLengthM(segments)
-
-    getNext := func(distInLap float64) (float64, float64, bool) {
-        if wraparound {
-            return nextConstraintWrap(constraints, distInLap, lapLength)
-        }
-        return nextConstraint(constraints, distInLap)
-    }
-
-    distInLapFn := func(totalDist float64) float64 {
-        if wraparound && lapLength > 0 {
-            d := math.Mod(totalDist, lapLength)
-            if d < 0 {
-                d += lapLength
-            }
-            return d
-        }
-        return totalDist
-    }
-
-    applyJerkLimit := func(aCmd, aPrev, vNow, ds float64) float64 {
-        vEff := math.Max(vNow, vMin)
-        dt := ds / vEff
-        maxDeltaA := jerkMax * dt
-        if aCmd > aPrev+maxDeltaA {
-            return aPrev + maxDeltaA
-        }
-        if aCmd < aPrev-maxDeltaA {
-            return aPrev - maxDeltaA
-        }
-        return aCmd
-    }
-
-    for _, seg := range segments {
-        switch seg.Type {
-        case "straight":
-            remaining := seg.Length
-            for remaining > 0 {
-                ds := math.Min(stepM, remaining)
-
-                // straight: no lateral load
-                aTotalMax := muTire * g
-                aLongMax := aTotalMax
-
-                distInLap := distInLapFn(totalDistance)
-
-                lookV := baseTarget
-                vLim, dTo, ok := getNext(distInLap)
-                if ok && vLim < lookV {
-                    lookV = vLim
-                }
-
-                var aCmd float64
-
-                if v > lookV && ok && dTo > 0 {
-                    // COAST DECEL (zero drive)
-                    aCoast := coastDecel(v, vMin, m, g, Crr, rho, Cd, A, theta) // negative
-
-                    // REQUIRED decel to meet constraint (constant-a kinematics)
-                    aReq := (lookV*lookV - v*v) / (2 * dTo) // negative
-
-                    // Pick the gentlest decel that still satisfies constraint:
-                    // both negative, so max() is "less braking" but still enough
-                    aCmd = math.Max(aReq, aCoast)
-
-                    // Tire limit
-                    aCmd = math.Max(aCmd, -aLongMax)
-                } else if v < baseTarget {
-                    // accelerate (power-limited)
-                    aPower := accelAtSpeed(v, vMin, rWheel, Tmax, Pmax, etaDrive, m, g, Crr, rho, Cd, A, theta)
-                    aCmd = math.Min(aPower, aLongMax)
-                } else {
-                    // above/at target: coast (no drive)
-                    aCmd = coastDecel(v, vMin, m, g, Crr, rho, Cd, A, theta)
-                    aCmd = math.Max(aCmd, -aLongMax)
-                }
-
-                // JERK LIMIT (smooth accel changes)
-                a := applyJerkLimit(aCmd, prevA, v, ds)
-
-                vNext := updateSpeed(v, a, ds)
-                if vNext > baseTarget {
-                    vNext = baseTarget
-                }
-
-                x += ds * math.Cos(heading)
-                y += ds * math.Sin(heading)
-                totalDistance += ds
-                points = append(points, telemetryPoint{X: x, Y: y, Speed: vNext, Accel: a, Distance: totalDistance})
-
-                v = vNext
-                prevA = a
-                remaining -= ds
-            }
-
-        case "curve":
-            if seg.Angle == 0 || seg.Radius <= 0 {
-                continue
-            }
-
-            aLatMax := gmax * g
-            vCap := math.Sqrt(aLatMax * seg.Radius)
-            targetSpeed := math.Min(vCap, baseTarget)
-            if maxSpeed > 0 && targetSpeed > maxSpeed {
-                targetSpeed = maxSpeed
-            }
-
-            arcLength := seg.Radius * math.Abs(seg.Angle) * math.Pi / 180.0
-            remaining := arcLength
-            isRight := seg.Angle < 0
-
-            for remaining > 0 {
-                ds := math.Min(stepM, remaining)
-
-                // geometry step along arc
-                delta := ds / seg.Radius
-                if !isRight {
-                    delta = -delta
-                }
-
-                normalX := -math.Sin(heading)
-                normalY := math.Cos(heading)
-                if !isRight {
-                    normalX = math.Sin(heading)
-                    normalY = -math.Cos(heading)
-                }
-
-                centerX := x + seg.Radius*normalX
-                centerY := y + seg.Radius*normalY
-
-                dx := x - centerX
-                dy := y - centerY
-
-                c := math.Cos(delta)
-                s := math.Sin(delta)
-                x = centerX + dx*c - dy*s
-                y = centerY + dx*s + dy*c
-                heading += delta
-
-                // friction circle
-                aLat := (v * v) / seg.Radius
-                aTotalMax := muTire * g
-                aLongMax := math.Sqrt(math.Max(0, aTotalMax*aTotalMax-aLat*aLat))
-
-                distInLap := distInLapFn(totalDistance)
-
-                lookV := targetSpeed
-                vLim, dTo, ok := getNext(distInLap)
-                if ok && vLim < lookV {
-                    lookV = vLim
-                }
-
-                var aCmd float64
-
-                if v > lookV && ok && dTo > 0 {
-                    aCoast := coastDecel(v, vMin, m, g, Crr, rho, Cd, A, theta) // negative
-                    aReq := (lookV*lookV - v*v) / (2 * dTo)                     // negative
-
-                    aCmd = math.Max(aReq, aCoast)
-                    aCmd = math.Max(aCmd, -aLongMax)
-                } else if v < targetSpeed {
-                    aPower := accelAtSpeed(v, vMin, rWheel, Tmax, Pmax, etaDrive, m, g, Crr, rho, Cd, A, theta)
-                    aCmd = math.Min(aPower, aLongMax)
-                } else {
-                    aCmd = coastDecel(v, vMin, m, g, Crr, rho, Cd, A, theta)
-                    aCmd = math.Max(aCmd, -aLongMax)
-                }
-
-                // JERK LIMIT
-                a := applyJerkLimit(aCmd, prevA, v, ds)
-
-                vNext := updateSpeed(v, a, ds)
-                if vNext > targetSpeed {
-                    vNext = targetSpeed
-                }
-
-                totalDistance += ds
-                points = append(points, telemetryPoint{X: x, Y: y, Speed: vNext, Accel: a, Distance: totalDistance})
-
-                v = vNext
-                prevA = a
-                remaining -= ds
-            }
-        }
-    }
-
-    return points
-}
-
-// calculates accel at a given v
-func accelAtSpeed(
-	v float64,
-	vMin float64,
-	rWheel float64,
-	Tmax float64,
-	Pmax float64,
-	etaDrive float64,
-	m float64,
-	g float64,
-	Crr float64,
-	rho float64,
-	Cd float64,
-	A float64,
-	theta float64,
-) float64 {
-	vEff := math.Max(v, vMin)
-	pAvail := WheelPowerEV(v, Tmax, Pmax, rWheel, etaDrive)
-	fDrive := pAvail / vEff
-	if v < vMin && rWheel > 0 {
-		fDrive = Tmax / rWheel
-	}
-	pRes := PowerRequired(v, m, g, Crr, rho, Cd, A, theta)
-	fRes := pRes / vEff
-	return (fDrive - fRes) / m
-}
-
-// updates new speed given curent v and constant a
-func updateSpeed(v float64, a float64, ds float64) float64 {
-	if a == 0 {
-		return v
-	}
-	v2 := v*v + 2*a*ds
-	if v2 <= 0 {
-		return 0
-	}
-	return math.Sqrt(v2)
-}
-
-// computers deceleratoin when no drive power
-func coastDecel(
-	v float64,
-	vMin float64,
-	m float64,
-	g float64,
-	Crr float64,
-	rho float64,
-	Cd float64,
-	A float64,
-	theta float64,
-) float64 {
-	vEff := math.Max(v, vMin)
-	pRes := PowerRequired(v, m, g, Crr, rho, Cd, A, theta)
-	fRes := pRes / vEff
-	return -fRes / m
-}
-
-// brought the function from flare_sim file to here ...
-func computeOptimalSpeed() float64 {
-	const (
-		A             = 0.456
-		Cd            = 0.21
-		rho           = 1.225
-		Crr           = 0.0015
-		m             = 285.0
-		g             = 9.81
-		theta         = 0.0
-		rWheel        = 0.2792
-		Tmax          = 45.0
-		Pmax          = 10000.0
-		batteryWh     = 5000.0
-		solarWhPerMin = 5.0
-		etaDrive      = 0.90
-		raceDayMin    = 480.0
-	)
-
-	bestV, bestD := 0.0, 0.0
-	for v := 2.0; v <= 40.0; v += 0.5 {
-		if d, ok := DistanceForSpeedEV(v, batteryWh, solarWhPerMin, etaDrive, raceDayMin,
-			rWheel, Tmax, Pmax, m, g, Crr, rho, Cd, A, theta); ok && d > bestD {
-			bestD, bestV = d, v
-		}
-	}
-
-	for v := math.Max(0.5, bestV-2.0); v <= bestV+2.0; v += 0.1 {
-		if d, ok := DistanceForSpeedEV(v, batteryWh, solarWhPerMin, etaDrive, raceDayMin,
-			rWheel, Tmax, Pmax, m, g, Crr, rho, Cd, A, theta); ok && d > bestD {
-			bestD, bestV = d, v
-		}
-	}
-
-	return bestV
 }
