@@ -229,11 +229,17 @@ func buildTelemetryOneLapWithParams(
                             aCmd = (1-alpha)*aCruise + alpha*aCoast
                         } else {
                             aCmd = aCoast
-                            if dNeedCoast > dTo {
-                                aReq := (entryV*entryV - v*v) / (2 * dTo)
-                                aCmd = math.Max(aReq, aCmd)
-                                aCmd = math.Max(aCmd, -aLongMax)
+                        }
+
+                        // --- NEW: enforce "must meet entryV by the entry point" ---
+                        // This prevents entering the curve above cap and then "teleport clamping".
+                        if dTo > 0 {
+                            aReqEntry := (entryV*entryV - v*v) / (2 * dTo)
+                            // aCmd must be <= aReqEntry (more negative) to be feasible.
+                            if aCmd > aReqEntry {
+                                aCmd = aReqEntry
                             }
+                            aCmd = math.Max(aCmd, -aLongMax)
                         }
                     } else {
                         aCmd = cruiseAccelCmd(v, aLongMax)
@@ -245,9 +251,7 @@ func buildTelemetryOneLapWithParams(
                 a := applyJerkLimit(aCmd, prevA, v, ds)
 
                 vNext := updateSpeed(v, a, ds)
-                if vNext > baseTarget {
-                    vNext = baseTarget
-                }
+                // --- REMOVED: hard clamp to baseTarget to avoid discontinuities ---
 
                 x += ds * math.Cos(heading)
                 y += ds * math.Sin(heading)
@@ -301,10 +305,12 @@ func buildTelemetryOneLapWithParams(
                 aTotalMax := muTire * g
                 aLongMax := math.Sqrt(math.Max(0, aTotalMax*aTotalMax-aLat*aLat))
 
+                // --- NEW: keep the distance to the next cap-drop entry ---
                 distInLap := distInLapFn(totalDistance)
-                nextVLim, _, ok := getNext(distInLap)
+                nextVLim, dToEntry, okEntry := getNext(distInLap)
+
                 targetSpeed := curveTarget
-                if ok && nextVLim > 0 {
+                if okEntry && nextVLim > 0 {
                     targetSpeed = math.Min(targetSpeed, nextVLim*entrySafety)
                 }
 
@@ -328,9 +334,16 @@ func buildTelemetryOneLapWithParams(
                         aCmd = aCoast
                     }
 
-                    aReq := (targetSpeed*targetSpeed - v*v) / (2 * remaining)
-                    aCmd = math.Max(aReq, aCmd)
-                    aCmd = math.Max(aCmd, -aLongMax)
+                    // --- NEW: enforce meeting targetSpeed BY the entry point distance, not by end of this segment ---
+                    dMust := remaining
+                    if okEntry && dToEntry > 0 {
+                        dMust = dToEntry
+                    }
+                    if dMust > 0 {
+                        aReq := (targetSpeed*targetSpeed - v*v) / (2 * dMust)
+                        aCmd = math.Max(aReq, aCmd)
+                        aCmd = math.Max(aCmd, -aLongMax)
+                    }
                 } else if v < targetSpeed {
                     aPower := accelAtSpeed(v, vMin, rWheel, Tmax, Pmax, etaDrive, m, g, Crr, rho, Cd, A, theta)
                     aCmd = math.Min(aPower, aLongMax)
@@ -341,9 +354,7 @@ func buildTelemetryOneLapWithParams(
                 a := applyJerkLimit(aCmd, prevA, v, ds)
 
                 vNext := updateSpeed(v, a, ds)
-                if vNext > targetSpeed {
-                    vNext = targetSpeed
-                }
+                // --- REMOVED: hard clamp to targetSpeed to avoid discontinuities ---
 
                 totalDistance += ds
                 points = append(points, telemetryPoint{X: x, Y: y, Speed: vNext, Accel: a, Distance: totalDistance})
