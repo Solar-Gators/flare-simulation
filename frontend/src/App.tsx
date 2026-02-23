@@ -57,6 +57,12 @@ function speedToColor(speed: number, minSpeed: number, maxSpeed: number): string
   return `hsl(${hue}, 80%, 48%)`
 }
 
+function lapDistanceFromTelemetry(points: TelemetryPoint[]): number | null {
+  if (!points || points.length < 2) return null
+  const last = points[points.length - 1]
+  return Number.isFinite(last.distance) && last.distance > 0 ? last.distance : null
+}
+
 async function postDistance(payload: Record<string, number>, wraparound: boolean) {
   const response = await fetch('http://localhost:8080/distance', {
     method: 'POST',
@@ -98,6 +104,9 @@ function App() {
   const [status, setStatus] = useState('Fill inputs and press Compute.')
   const [trackStatus, setTrackStatus] = useState('Track not loaded yet.')
   const [telemetry, setTelemetry] = useState<TelemetryPoint[]>([])
+
+  const [lapDistance, setLapDistance] = useState<number | null>(null)
+  const [laps, setLaps] = useState<number | null>(null)
 
   const [tooltip, setTooltip] = useState<TooltipState>({
     visible: false,
@@ -188,6 +197,12 @@ function App() {
       const points = await postTelemetry(payload, wraparoundLookahead, distResp.optimalV)
       setTelemetry(points)
 
+      const lapM = lapDistanceFromTelemetry(points)
+      setLapDistance(lapM)
+
+      const totalDist = distResp.distanceM
+      setLaps(lapM ? totalDist / lapM : null)
+
       setStatus('Success.')
       setTrackStatus(`Telemetry points: ${points.length}`)
     } catch (err) {
@@ -257,22 +272,13 @@ function App() {
           <div className="actions">
             <button type="submit">Compute</button>
             <div className="result">
-              Distance: <strong>{result}</strong> m
+              Laps: <strong>{laps === null ? '--' : laps.toFixed(2)}</strong>
             </div>
             <div className="status">
-              {status}
-              {optimalV !== null && (
-                <>
-                  {' '}
-                  · Optimal v: <strong>{optimalV.toFixed(2)}</strong> m/s
-                </>
-              )}
-              {remainingWh !== null && (
-                <>
-                  {' '}
-                  · Remaining: <strong>{remainingWh.toFixed(1)}</strong> Wh
-                </>
-              )}
+              {status} {lapDistance !== null && <small>Lap {lapDistance.toFixed(1)} m</small>}{' '}
+              {optimalV !== null && <small>Optimal v {optimalV.toFixed(2)} m/s</small>}{' '}
+              {remainingWh !== null && <small>Remaining {remainingWh.toFixed(1)} Wh</small>}{' '}
+              <small>Distance {result} m</small>
             </div>
           </div>
         </form>
