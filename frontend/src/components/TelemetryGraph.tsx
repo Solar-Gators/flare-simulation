@@ -53,6 +53,13 @@ export default function TelemetryGraph({ telemetry }: Props) {
   const [normalize100, setNormalize100] = useState(false)
 
   const options = useMemo(() => telemetry.map((p, i) => ({ i, label: `${i}: ${p.distance.toFixed(1)} m` })), [telemetry])
+  const tooltipProps = useMemo(
+    () => ({
+      shared: true,
+      cursor: { stroke: '#999', strokeDasharray: '3 3' },
+    }),
+    [],
+  )
 
   // bin telemetry into chart-friendly points (optionally normalized by 100 m bins)
   function binTelemetry(points: TPoint[], binSize = 100): ChartPoint[] {
@@ -128,8 +135,8 @@ export default function TelemetryGraph({ telemetry }: Props) {
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="distance" tickFormatter={(d: number | string) => `${Math.round(Number(d))}m`} />
               <YAxis />
-              <ReTooltip />
-              <Line type="monotone" dataKey="speed" stroke="#007acc" dot={false} />
+              <ReTooltip {...tooltipProps} />
+              <Line type="monotone" dataKey="speed" stroke="#007acc" dot={false} strokeWidth={2} activeDot={{ r: 5 }} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -140,8 +147,8 @@ export default function TelemetryGraph({ telemetry }: Props) {
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="distance" tickFormatter={(d: number | string) => `${Math.round(Number(d))}m`} />
               <YAxis />
-              <ReTooltip />
-              <Line type="monotone" dataKey="accel" stroke="#e55353" dot={false} />
+              <ReTooltip {...tooltipProps} />
+              <Line type="monotone" dataKey="accel" stroke="#e55353" dot={false} strokeWidth={2} activeDot={{ r: 5 }} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -152,8 +159,8 @@ export default function TelemetryGraph({ telemetry }: Props) {
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="distance" tickFormatter={(d: number | string) => `${Math.round(Number(d))}m`} />
               <YAxis />
-              <ReTooltip />
-              <Line type="monotone" dataKey="energy" stroke="#22aa55" dot={false} />
+              <ReTooltip {...tooltipProps} />
+              <Line type="monotone" dataKey="energy" stroke="#22aa55" dot={false} strokeWidth={2} activeDot={{ r: 5 }} />
             </LineChart>
           </ResponsiveContainer>
         </div>

@@ -11,6 +11,16 @@ type TelemetryPoint = {
   distance: number
 }
 
+type TrackSegment = {
+  d: string
+  speed: number
+  accel: number
+  distance: number
+  color: string
+  x: number
+  y: number
+}
+
 type TooltipState = {
   visible: boolean
   x: number
@@ -70,6 +80,7 @@ function App() {
   const [status, setStatus] = useState('')
   const [trackStatus, setTrackStatus] = useState('Loading track...')
   const [telemetry, setTelemetry] = useState<TelemetryPoint[]>([])
+  const [hoverPoint, setHoverPoint] = useState<{ x: number; y: number; color: string } | null>(null)
   const [tooltip, setTooltip] = useState<TooltipState>({
     visible: false,
     x: 0,
@@ -111,7 +122,7 @@ function App() {
       height + padding * 2,
     ].join(' ')
 
-    const nextSegments = telemetry.slice(1).map((point, index) => {
+    const nextSegments: TrackSegment[] = telemetry.slice(1).map((point, index) => {
       const prev = telemetry[index]
       return {
         d: `M ${prev.x} ${prev.y} L ${point.x} ${point.y}`,
@@ -119,6 +130,8 @@ function App() {
         accel: point.accel,
         distance: point.distance,
         color: speedToColor(point.speed, minSpeed, maxSpeed),
+        x: point.x,
+        y: point.y,
       }
     })
 
@@ -204,6 +217,9 @@ function App() {
     speed: number,
     accel: number,
     distance: number,
+    x: number,
+    y: number,
+    color: string,
   ) => {
     setTooltip({
       visible: true,
@@ -213,10 +229,12 @@ function App() {
       accel,
       distance,
     })
+    setHoverPoint({ x, y, color })
   }
 
   const handleSegmentLeave = () => {
     setTooltip((prev) => ({ ...prev, visible: false }))
+    setHoverPoint(null)
   }
 
   return (
@@ -257,19 +275,49 @@ function App() {
         <svg className="track-frame" viewBox={viewBox} role="img" aria-label="Track visualization">
           <g className="track-layer">
             {segments.map((segment, index) => (
-              <path
-                key={`${segment.distance}-${index}`}
-                d={segment.d}
-                fill="none"
-                stroke={segment.color}
-                strokeWidth={6}
-                strokeLinecap="round"
-                onMouseMove={(event) =>
-                  handleSegmentMove(event, segment.speed, segment.accel, segment.distance)
-                }
-                onMouseLeave={handleSegmentLeave}
-              />
+              <g key={`${segment.distance}-${index}`}>
+                <path
+                  d={segment.d}
+                  fill="none"
+                  stroke={segment.color}
+                  strokeWidth={30}
+                  strokeLinecap="round"
+                  pointerEvents="none"
+                />
+                <path
+                  d={segment.d}
+                  fill="none"
+                  stroke="rgba(0,0,0,0)"
+                  strokeWidth={20}
+                  strokeLinecap="round"
+                  pointerEvents="stroke"
+                  onMouseMove={(event) =>
+                    handleSegmentMove(
+                      event,
+                      segment.speed,
+                      segment.accel,
+                      segment.distance,
+                      segment.x,
+                      segment.y,
+                      segment.color,
+                    )
+                  }
+                  onMouseLeave={handleSegmentLeave}
+                />
+              </g>
             ))}
+            {hoverPoint ? (
+              <circle
+                className="track-hover"
+                cx={hoverPoint.x}
+                cy={hoverPoint.y}
+                r={6}
+                fill="#ffffff"
+                stroke={hoverPoint.color}
+                strokeWidth={3}
+                pointerEvents="none"
+              />
+            ) : null}
           </g>
         </svg>
         <div className="track-meta">
