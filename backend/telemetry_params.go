@@ -26,6 +26,7 @@ func buildTelemetryWithParams(
 
     // cruise target on straights (m/s)
     baseTarget float64,
+    gmaxParam float64,
 ) []telemetryPoint {
 
     // Non-wraparound: behave as before.
@@ -37,6 +38,7 @@ func buildTelemetryWithParams(
             m, g, Crr, rho, Cd, A, theta,
             rWheel, Tmax, Pmax, etaDrive,
             baseTarget,
+            gmaxParam,
             0, 0, 0,
             0,
             0, // startSpeed (0 => use startFromZero logic)
@@ -51,6 +53,7 @@ func buildTelemetryWithParams(
         m, g, Crr, rho, Cd, A, theta,
         rWheel, Tmax, Pmax, etaDrive,
         baseTarget,
+        gmaxParam,
         0, 0, 0,
         0,
         0,
@@ -70,6 +73,7 @@ func buildTelemetryWithParams(
         m, g, Crr, rho, Cd, A, theta,
         rWheel, Tmax, Pmax, etaDrive,
         baseTarget,
+        gmaxParam,
         0, 0, 0, // restart position/orientation at start/finish for display
         0,
         last.Speed, // this is the key: start at previous lap end speed
@@ -100,6 +104,7 @@ func buildTelemetryOneLapWithParams(
 
     // cruise target on straights (m/s)
     baseTarget float64,
+    gmaxParam float64,
 
     // initial conditions
     startX float64,
@@ -110,7 +115,6 @@ func buildTelemetryOneLapWithParams(
 ) []telemetryPoint {
     const (
         stepM  = 0.25
-        gmax   = 0.8
         muTire = 0.9
         vMin   = 0.5
 
@@ -140,7 +144,7 @@ func buildTelemetryOneLapWithParams(
         baseTarget = 1.0
     }
 
-    constraints := buildConstraints(segments, gmax, g)
+    constraints := buildConstraints(segments, gmaxParam, g)
     lapLength := totalLapLengthM(segments)
 
     getNext := func(distInLap float64) (float64, float64, bool) {
@@ -268,7 +272,7 @@ func buildTelemetryOneLapWithParams(
                 continue
             }
 
-            vCap := math.Sqrt(gmax * g * seg.Radius)
+            vCap := math.Sqrt(gmaxParam * g * seg.Radius)
             curveTarget := math.Min(vCap*entrySafety, baseTarget)
 
             arcLength := seg.Radius * math.Abs(seg.Angle) * math.Pi / 180.0

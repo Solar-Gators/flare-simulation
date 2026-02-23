@@ -34,7 +34,6 @@ func applyJerkLimit(aCmd, aPrev, vNow, ds, vMin, jerkMax float64) float64 {
 func simulateLapMetrics(segments []trackSegment, req distanceRequest, baseTarget float64) lapMetrics {
     const (
         stepM  = 0.25
-        gmax   = 0.8
         muTire = 0.9
         vMin   = 0.5
 
@@ -61,7 +60,7 @@ func simulateLapMetrics(segments []trackSegment, req distanceRequest, baseTarget
         return lapMetrics{ok: false}
     }
 
-    constraints := buildConstraints(segments, gmax, g)
+    constraints := buildConstraints(segments, req.Gmax, g)
     lapLength := totalLapLengthM(segments)
 
     getNext := func(distInLap float64) (float64, float64, bool) {
@@ -196,7 +195,7 @@ func simulateLapMetrics(segments []trackSegment, req distanceRequest, baseTarget
                 continue
             }
 
-            vCap := math.Sqrt(gmax * g * seg.Radius)
+            vCap := math.Sqrt(req.Gmax * g * seg.Radius)
             curveTarget := math.Min(vCap*entrySafety, baseTarget)
 
             arcLen := seg.Radius * math.Abs(seg.Angle) * math.Pi / 180.0
