@@ -45,6 +45,14 @@ const initialFields: FieldDef[] = [
   { name: 'cD', label: 'cD', step: '0.01', value: '0.21' },
   { name: 'a', label: 'a (m^2)', step: '0.001', value: '0.456' },
   { name: 'theta', label: 'theta (rad)', step: '0.001', value: '0' },
+  {
+    name: 'gmax',
+    label: 'gmax (lateral g limit)',
+    step: '0.01',
+    value: '1.00',
+    min: '0.1',
+    max: '2.0',
+  },
 ]
 
 function toNumber(value: string): number | null {

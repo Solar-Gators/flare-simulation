@@ -27,6 +27,7 @@ type distanceRequest struct {
     A     float64 `json:"a"`
     Theta float64 `json:"theta"`
 
+    Gmax       float64 `json:"gmax"`
     Wraparound bool `json:"wraparound"`
 }
 
@@ -74,6 +75,8 @@ type telemetryRequest struct {
     Cd            float64 `json:"cD"`
     A             float64 `json:"a"`
     Theta         float64 `json:"theta"`
+    Gmax       float64 `json:"gmax"`
+
     Wraparound    bool    `json:"wraparound"`
 
     // provided by frontend from /distance result
@@ -128,7 +131,7 @@ func distanceHandler(w http.ResponseWriter, r *http.Request) {
 
     if req.BatteryWh <= 0 || req.EtaDrive <= 0 || req.RaceDayMin <= 0 ||
         req.RWheel <= 0 || req.Tmax <= 0 || req.Pmax <= 0 || req.M <= 0 || req.G <= 0 ||
-        req.Crr < 0 || req.Rho <= 0 || req.Cd <= 0 || req.A <= 0 {
+        req.Crr < 0 || req.Rho <= 0 || req.Cd <= 0 || req.A <= 0 || req.Gmax <= 0 || req.Gmax > 2.0{
         writeJSON(w, http.StatusBadRequest, distanceResponse{OK: false, Message: "missing or invalid input values"})
         return
     }
@@ -195,7 +198,7 @@ func trackTelemetryHandler(w http.ResponseWriter, r *http.Request) {
     if req.EtaDrive <= 0 || req.RaceDayMin <= 0 ||
         req.RWheel <= 0 || req.Tmax <= 0 || req.Pmax <= 0 || req.M <= 0 || req.G <= 0 ||
         req.Crr < 0 || req.Rho <= 0 || req.Cd <= 0 || req.A <= 0 ||
-        req.BaseTarget <= 0 {
+        req.BaseTarget <= 0 || req.Gmax <= 0 || req.Gmax > 2.0{
         writeJSON(w, http.StatusBadRequest, telemetryResponse{OK: false, Message: "missing or invalid input values"})
         return
     }
@@ -208,7 +211,7 @@ func trackTelemetryHandler(w http.ResponseWriter, r *http.Request) {
         startFromZero,
         req.M, req.G, req.Crr, req.Rho, req.Cd, req.A, req.Theta,
         req.RWheel, req.Tmax, req.Pmax, req.EtaDrive,
-        req.BaseTarget,
+        req.BaseTarget, req.Gmax,
     )
 
     writeJSON(w, http.StatusOK, telemetryResponse{Points: points, OK: true})
