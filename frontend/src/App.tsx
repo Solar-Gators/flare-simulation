@@ -8,6 +8,7 @@ type TelemetryPoint = {
   speed: number
   accel: number
   distance: number
+  vCap: number
 }
 
 type TooltipState = {
@@ -17,6 +18,7 @@ type TooltipState = {
   speed: number
   accel: number
   distance: number
+  vCap: number
 }
 
 type FieldDef = {
@@ -115,6 +117,7 @@ function App() {
     speed: 0,
     accel: 0,
     distance: 0,
+    vCap: 0,
   })
 
   const { segments, viewBox, speedRange } = useMemo(() => {
@@ -156,6 +159,7 @@ function App() {
         speed: pt.speed,
         accel: pt.accel,
         distance: pt.distance,
+        vCap: pt.vCap,
         color: speedToColor(pt.speed, minSpeed, maxSpeed),
       }
     })
@@ -217,6 +221,7 @@ function App() {
     speed: number,
     accel: number,
     distance: number,
+    vCap: number,
   ) => {
     setTooltip({
       visible: true,
@@ -225,6 +230,7 @@ function App() {
       speed,
       accel,
       distance,
+      vCap,
     })
   }
 
@@ -296,7 +302,9 @@ function App() {
                 stroke={seg.color}
                 strokeWidth={6}
                 strokeLinecap="round"
-                onMouseMove={(e) => handleSegmentMove(e, seg.speed, seg.accel, seg.distance)}
+                onMouseMove={(e) =>
+                  handleSegmentMove(e, seg.speed, seg.accel, seg.distance, seg.vCap)
+                }
                 onMouseLeave={handleSegmentLeave}
               />
             ))}
