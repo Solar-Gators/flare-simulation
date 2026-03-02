@@ -57,6 +57,7 @@ type telemetryPoint struct {
     Speed    float64 `json:"speed"`
     Accel    float64 `json:"accel"`
     Distance float64 `json:"distance"`
+    VCap     float64 `json:"vCap"`
 }
 
 type telemetryRequest struct {
