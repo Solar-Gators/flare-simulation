@@ -138,7 +138,7 @@ func buildTelemetryOneLapWithParams(
 
     totalDistance := startDistance
     prevA := 0.0
-    points = append(points, telemetryPoint{X: x, Y: y, Speed: v, Accel: 0, Distance: totalDistance})
+    points = append(points, telemetryPoint{X: x, Y: y, Speed: v, Accel: 0, Distance: totalDistance, VCap: baseTarget})
 
     if baseTarget <= 0 {
         baseTarget = 1.0
@@ -260,7 +260,7 @@ func buildTelemetryOneLapWithParams(
                 x += ds * math.Cos(heading)
                 y += ds * math.Sin(heading)
                 totalDistance += ds
-                points = append(points, telemetryPoint{X: x, Y: y, Speed: vNext, Accel: a, Distance: totalDistance})
+                points = append(points, telemetryPoint{X: x, Y: y, Speed: vNext, Accel: a, Distance: totalDistance, VCap: baseTarget})
 
                 v = vNext
                 prevA = a
@@ -358,10 +358,12 @@ func buildTelemetryOneLapWithParams(
                 a := applyJerkLimit(aCmd, prevA, v, ds)
 
                 vNext := updateSpeed(v, a, ds)
-                // --- REMOVED: hard clamp to targetSpeed to avoid discontinuities ---
+
+                VCapHere := vCap * entrySafety
+
 
                 totalDistance += ds
-                points = append(points, telemetryPoint{X: x, Y: y, Speed: vNext, Accel: a, Distance: totalDistance})
+                points = append(points, telemetryPoint{X: x, Y: y, Speed: vNext, Accel: a, Distance: totalDistance, VCap: VCapHere})
 
                 v = vNext
                 prevA = a

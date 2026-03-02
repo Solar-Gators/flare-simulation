@@ -331,6 +331,10 @@ function App() {
         <div>
           Speed: <strong>{tooltip.speed.toFixed(2)}</strong> m/s
         </div>
+        <div>
+          Vmax (gmax):{' '}
+          <strong>{Number.isFinite(tooltip.vCap) ? tooltip.vCap.toFixed(2) : '--'}</strong> m/s
+        </div>
         <div>Accel: {tooltip.accel.toFixed(3)} m/s²</div>
         <div>Dist: {tooltip.distance.toFixed(1)} m</div>
       </div>
