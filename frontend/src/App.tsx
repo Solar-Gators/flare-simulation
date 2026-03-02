@@ -308,8 +308,9 @@ function App() {
                 d={seg.d}
                 fill="none"
                 stroke={seg.color}
-                strokeWidth={6}
+                strokeWidth={30}
                 strokeLinecap="round"
+                pointerEvents="stroke"
                 onMouseMove={(e) =>
                   handleSegmentMove(e, seg.speed, seg.accel, seg.distance, seg.vCap)
                 }
