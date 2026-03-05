@@ -55,15 +55,18 @@ const initialFields: FieldDef[] = [
   },
 ]
 
+const ABS_COLOR_MIN_SPEED = 18.5
+const ABS_COLOR_MAX_SPEED = 25.0
+
 function toNumber(value: string): number | null {
   const num = Number.parseFloat(value)
   return Number.isFinite(num) ? num : null
 }
 
-function speedToColor(speed: number, minSpeed: number, maxSpeed: number): string {
-  const clamped = Math.max(minSpeed, Math.min(speed, maxSpeed))
-  const t = (clamped - minSpeed) / Math.max(1e-6, maxSpeed - minSpeed)
-  const hue = 210 - 210 * t
+function speedToColor(speed: number): string {
+  const clamped = Math.max(ABS_COLOR_MIN_SPEED, Math.min(speed, ABS_COLOR_MAX_SPEED))
+  const t = (clamped - ABS_COLOR_MIN_SPEED) / Math.max(1e-6, ABS_COLOR_MAX_SPEED - ABS_COLOR_MIN_SPEED)
+  const hue = 120 * t
   return `hsl(${hue}, 80%, 48%)`
 }
 
@@ -117,6 +120,7 @@ function App() {
 
   const [lapDistance, setLapDistance] = useState<number | null>(null)
   const [laps, setLaps] = useState<number | null>(null)
+  const [trackWidth, setTrackWidth] = useState(30)
 
   const [tooltip, setTooltip] = useState<TooltipState>({
     visible: false,
@@ -168,7 +172,7 @@ function App() {
         accel: pt.accel,
         distance: pt.distance,
         vCap: pt.vCap,
-        color: speedToColor(pt.speed, minSpeed, maxSpeed),
+        color: speedToColor(pt.speed),
       }
     })
 
@@ -300,6 +304,22 @@ function App() {
 
       <section className="panel">
         <h2>Track Preview</h2>
+        <div className="track-controls">
+          <label className="range-control">
+            <span>Track width</span>
+            <div className="range-row">
+              <input
+                type="range"
+                min="6"
+                max="60"
+                step="1"
+                value={trackWidth}
+                onChange={(e) => setTrackWidth(Number(e.target.value))}
+              />
+              <span className="range-value">{trackWidth}px</span>
+            </div>
+          </label>
+        </div>
         <svg className="track-frame" viewBox={viewBox} role="img" aria-label="Track visualization">
           <g className="track-layer">
             {segments.map((seg) => (
@@ -308,7 +328,7 @@ function App() {
                 d={seg.d}
                 fill="none"
                 stroke={seg.color}
-                strokeWidth={30}
+                strokeWidth={trackWidth}
                 strokeLinecap="round"
                 pointerEvents="stroke"
                 onMouseMove={(e) =>
@@ -320,7 +340,8 @@ function App() {
           </g>
         </svg>
         <div className="track-meta">
-          {trackStatus} · Speed range {speedRange[0].toFixed(2)}–{speedRange[1].toFixed(2)} m/s
+          {trackStatus} · Actual speed range {speedRange[0].toFixed(2)}–{speedRange[1].toFixed(2)} m/s ·
+          Color scale {ABS_COLOR_MIN_SPEED.toFixed(2)}–{ABS_COLOR_MAX_SPEED.toFixed(2)} m/s
         </div>
       </section>
 
