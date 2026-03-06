@@ -5,372 +5,362 @@ import "math"
 // Wrapper: if wraparound=true, do a warm-up lap and return the second lap starting
 // at the previous lap’s end speed (so the preview starts “already in motion”).
 func buildTelemetryWithParams(
-    segments []trackSegment,
-    wraparound bool,
-    startFromZero bool,
+	segments []trackSegment,
+	wraparound bool,
+	startFromZero bool,
 
-    // physics
-    m float64,
-    g float64,
-    Crr float64,
-    rho float64,
-    Cd float64,
-    A float64,
-    theta float64,
+	// physics
+	m float64,
+	g float64,
+	Crr float64,
+	rho float64,
+	Cd float64,
+	A float64,
+	theta float64,
 
-    // EV
-    rWheel float64,
-    Tmax float64,
-    Pmax float64,
-    etaDrive float64,
+	// EV
+	rWheel float64,
+	Tmax float64,
+	Pmax float64,
+	etaDrive float64,
 
-    // cruise target on straights (m/s)
-    baseTarget float64,
-    gmaxParam float64,
+	// cruise target on straights (m/s)
+	baseTarget float64,
+	gmaxParam float64,
 ) []telemetryPoint {
 
-    // Non-wraparound: behave as before.
-    if !wraparound {
-        return buildTelemetryOneLapWithParams(
-            segments,
-            wraparound,
-            startFromZero,
-            m, g, Crr, rho, Cd, A, theta,
-            rWheel, Tmax, Pmax, etaDrive,
-            baseTarget,
-            gmaxParam,
-            0, 0, 0,
-            0,
-            0, // startSpeed (0 => use startFromZero logic)
-        )
-    }
+	// Non-wraparound: behave as before.
+	if !wraparound {
+		return buildTelemetryOneLapWithParams(
+			segments,
+			wraparound,
+			startFromZero,
+			m, g, Crr, rho, Cd, A, theta,
+			rWheel, Tmax, Pmax, etaDrive,
+			baseTarget,
+			gmaxParam,
+			0, 0, 0,
+			0,
+			0, // startSpeed (0 => use startFromZero logic)
+		)
+	}
 
-    // Wraparound: warm-up one lap, then generate a second lap starting from the warm-up end speed.
-    warm := buildTelemetryOneLapWithParams(
-        segments,
-        wraparound,
-        false, // don't force startFromZero for warmup
-        m, g, Crr, rho, Cd, A, theta,
-        rWheel, Tmax, Pmax, etaDrive,
-        baseTarget,
-        gmaxParam,
-        0, 0, 0,
-        0,
-        0,
-    )
+	// Wraparound: warm-up one lap, then generate a second lap starting from the warm-up end speed.
+	warm := buildTelemetryOneLapWithParams(
+		segments,
+		wraparound,
+		false, // don't force startFromZero for warmup
+		m, g, Crr, rho, Cd, A, theta,
+		rWheel, Tmax, Pmax, etaDrive,
+		baseTarget,
+		gmaxParam,
+		0, 0, 0,
+		0,
+		0,
+	)
 
-    if len(warm) < 2 {
-        return warm
-    }
+	if len(warm) < 2 {
+		return warm
+	}
 
-    last := warm[len(warm)-1]
+	last := warm[len(warm)-1]
 
-    // Start next lap at the previous lap’s end speed. Reset distance to 0 for clean coloring/viewBox.
-    return buildTelemetryOneLapWithParams(
-        segments,
-        wraparound,
-        false,
-        m, g, Crr, rho, Cd, A, theta,
-        rWheel, Tmax, Pmax, etaDrive,
-        baseTarget,
-        gmaxParam,
-        0, 0, 0, // restart position/orientation at start/finish for display
-        0,
-        last.Speed, // this is the key: start at previous lap end speed
-    )
+	// Start next lap at the previous lap’s end speed. Reset distance to 0 for clean coloring/viewBox.
+	return buildTelemetryOneLapWithParams(
+		segments,
+		wraparound,
+		false,
+		m, g, Crr, rho, Cd, A, theta,
+		rWheel, Tmax, Pmax, etaDrive,
+		baseTarget,
+		gmaxParam,
+		0, 0, 0, // restart position/orientation at start/finish for display
+		0,
+		last.Speed, // this is the key: start at previous lap end speed
+	)
 }
 
 // The original implementation, parameterized with initial conditions.
 // startSpeed <= 0 means “use startFromZero logic” (0 speed if startFromZero else 0.5).
 func buildTelemetryOneLapWithParams(
-    segments []trackSegment,
-    wraparound bool,
-    startFromZero bool,
+	segments []trackSegment,
+	wraparound bool,
+	startFromZero bool,
 
-    // physics
-    m float64,
-    g float64,
-    Crr float64,
-    rho float64,
-    Cd float64,
-    A float64,
-    theta float64,
+	// physics
+	m float64,
+	g float64,
+	Crr float64,
+	rho float64,
+	Cd float64,
+	A float64,
+	theta float64,
 
-    // EV
-    rWheel float64,
-    Tmax float64,
-    Pmax float64,
-    etaDrive float64,
+	// EV
+	rWheel float64,
+	Tmax float64,
+	Pmax float64,
+	etaDrive float64,
 
-    // cruise target on straights (m/s)
-    baseTarget float64,
-    gmaxParam float64,
+	// cruise target on straights (m/s)
+	baseTarget float64,
+	gmaxParam float64,
 
-    // initial conditions
-    startX float64,
-    startY float64,
-    startHeading float64,
-    startDistance float64,
-    startSpeed float64,
+	// initial conditions
+	startX float64,
+	startY float64,
+	startHeading float64,
+	startDistance float64,
+	startSpeed float64,
 ) []telemetryPoint {
-    const (
-        stepM  = 0.25
-        muTire = 0.9
-        vMin   = 0.5
+	const (
+		stepM  = 0.25
+		muTire = 0.9
+		vMin   = 0.5
 
-        jerkMax = 1.5
+		jerkMax = 1.5
 
-        entrySafety = 0.99
-        leadInM     = 30.0
-    )
+		entrySafety = 0.99
+		leadInM     = 30.0
+	)
 
-    points := make([]telemetryPoint, 0, 256)
+	points := make([]telemetryPoint, 0, 256)
 
-    x, y, heading := startX, startY, startHeading
+	x, y, heading := startX, startY, startHeading
 
-    v := startSpeed
-    if v <= 0 {
-        v = 0.5
-        if startFromZero {
-            v = 0.0
-        }
-    }
+	v := startSpeed
+	if v <= 0 {
+		v = 0.5
+		if startFromZero {
+			v = 0.0
+		}
+	}
 
-    totalDistance := startDistance
-    prevA := 0.0
-    points = append(points, telemetryPoint{X: x, Y: y, Speed: v, Accel: 0, Distance: totalDistance, VCap: baseTarget})
+	totalDistance := startDistance
+	prevA := 0.0
+	points = append(points, telemetryPoint{X: x, Y: y, Speed: v, Accel: 0, Distance: totalDistance, VCap: baseTarget})
 
-    if baseTarget <= 0 {
-        baseTarget = 1.0
-    }
+	if baseTarget <= 0 {
+		baseTarget = 1.0
+	}
 
-    constraints := buildConstraints(segments, gmaxParam, g)
-    lapLength := totalLapLengthM(segments)
+	apexTargets := buildApexTargets(segments, gmaxParam, g)
+	lapLength := totalLapLengthM(segments)
 
-    getNext := func(distInLap float64) (float64, float64, bool) {
-        if wraparound {
-            return nextConstraintWrap(constraints, distInLap, lapLength)
-        }
-        return nextConstraint(constraints, distInLap)
-    }
+	distInLapFn := func(totalDist float64) float64 {
+		if wraparound && lapLength > 0 {
+			d := math.Mod(totalDist, lapLength)
+			if d < 0 {
+				d += lapLength
+			}
+			return d
+		}
+		return totalDist
+	}
 
-    distInLapFn := func(totalDist float64) float64 {
-        if wraparound && lapLength > 0 {
-            d := math.Mod(totalDist, lapLength)
-            if d < 0 {
-                d += lapLength
-            }
-            return d
-        }
-        return totalDist
-    }
+	clamp01 := func(x float64) float64 {
+		if x < 0 {
+			return 0
+		}
+		if x > 1 {
+			return 1
+		}
+		return x
+	}
 
-    clamp01 := func(x float64) float64 {
-        if x < 0 {
-            return 0
-        }
-        if x > 1 {
-            return 1
-        }
-        return x
-    }
+	applyJerkLimit := func(aCmd, aPrev, vNow, ds float64) float64 {
+		vEff := math.Max(vNow, vMin)
+		dt := ds / vEff
+		maxDeltaA := jerkMax * dt
+		if aCmd > aPrev+maxDeltaA {
+			return aPrev + maxDeltaA
+		}
+		if aCmd < aPrev-maxDeltaA {
+			return aPrev - maxDeltaA
+		}
+		return aCmd
+	}
 
-    applyJerkLimit := func(aCmd, aPrev, vNow, ds float64) float64 {
-        vEff := math.Max(vNow, vMin)
-        dt := ds / vEff
-        maxDeltaA := jerkMax * dt
-        if aCmd > aPrev+maxDeltaA {
-            return aPrev + maxDeltaA
-        }
-        if aCmd < aPrev-maxDeltaA {
-            return aPrev - maxDeltaA
-        }
-        return aCmd
-    }
+	cruiseAccelCmd := func(vNow, aLongMax float64) float64 {
+		if vNow < baseTarget {
+			aPower := accelAtSpeed(vNow, vMin, rWheel, Tmax, Pmax, etaDrive, m, g, Crr, rho, Cd, A, theta)
+			return math.Min(aPower, aLongMax)
+		}
+		if vNow > baseTarget {
+			a := coastDecel(vNow, vMin, m, g, Crr, rho, Cd, A, theta)
+			return math.Max(a, -aLongMax)
+		}
+		return 0
+	}
 
-    cruiseAccelCmd := func(vNow, aLongMax float64) float64 {
-        if vNow < baseTarget {
-            aPower := accelAtSpeed(vNow, vMin, rWheel, Tmax, Pmax, etaDrive, m, g, Crr, rho, Cd, A, theta)
-            return math.Min(aPower, aLongMax)
-        }
-        if vNow > baseTarget {
-            a := coastDecel(vNow, vMin, m, g, Crr, rho, Cd, A, theta)
-            return math.Max(a, -aLongMax)
-        }
-        return 0
-    }
+	for _, seg := range segments {
+		switch seg.Type {
+		case "straight":
+			remaining := seg.Length
+			for remaining > 0 {
+				ds := math.Min(stepM, remaining)
 
-    for _, seg := range segments {
-        switch seg.Type {
-        case "straight":
-            remaining := seg.Length
-            for remaining > 0 {
-                ds := math.Min(stepM, remaining)
+				aTotalMax := muTire * g
+				aLongMax := aTotalMax
 
-                aTotalMax := muTire * g
-                aLongMax := aTotalMax
+				distInLap := distInLapFn(totalDistance)
+				horizon := apexLookaheadHorizon(v, vMin, aLongMax, leadInM)
+				vLim, dTo, ok := sharpestApexWithinHorizon(apexTargets, distInLap, lapLength, horizon, wraparound)
 
-                distInLap := distInLapFn(totalDistance)
-                vLim, dTo, ok := getNext(distInLap)
+				var aCmd float64
 
-                var aCmd float64
+				if ok && dTo > 0 && vLim > 0 {
+					entryV := vLim * entrySafety
 
-                if ok && dTo > 0 && vLim > 0 {
-                    entryV := vLim * entrySafety
+					if v > entryV && entryV > 0 {
+						dNeedCoast := coastDistanceToSpeed(v, entryV, Cd, Crr, g, m, A, rho)
 
-                    if v > entryV && entryV > 0 {
-                        dNeedCoast := coastDistanceToSpeed(v, entryV, Cd, Crr, g, m, A, rho)
+						aCruise := cruiseAccelCmd(v, aLongMax)
 
-                        aCruise := cruiseAccelCmd(v, aLongMax)
+						aCoast := coastDecel(v, vMin, m, g, Crr, rho, Cd, A, theta)
+						aCoast = math.Max(aCoast, -aLongMax)
+						aNeed := aCoast
+						if dTo > 0 {
+							aNeed = enforceBrakeLookahead(aCoast, v, entryV, dTo, aLongMax)
+						}
+						jerkBuffer := jerkBrakeBufferDistance(prevA, aNeed, v, vMin, jerkMax)
+						blendStart := dNeedCoast + leadInM + jerkBuffer
+						blendEnd := dNeedCoast + jerkBuffer
 
-                        aCoast := coastDecel(v, vMin, m, g, Crr, rho, Cd, A, theta)
-                        aCoast = math.Max(aCoast, -aLongMax)
+						if dTo > blendStart {
+							aCmd = aCruise
+						} else if dTo > blendEnd {
+							alpha := clamp01((blendStart - dTo) / math.Max(leadInM, 1e-9))
+							aCmd = (1-alpha)*aCruise + alpha*aNeed
+						} else {
+							aCmd = aNeed
+						}
+					} else {
+						aCmd = cruiseAccelCmd(v, aLongMax)
+					}
+				} else {
+					aCmd = cruiseAccelCmd(v, aLongMax)
+				}
 
-                        if dTo > dNeedCoast+leadInM {
-                            aCmd = aCruise
-                        } else if dTo > dNeedCoast {
-                            alpha := clamp01((dNeedCoast + leadInM - dTo) / leadInM)
-                            aCmd = (1-alpha)*aCruise + alpha*aCoast
-                        } else {
-                            aCmd = aCoast
-                        }
+				a := applyJerkLimit(aCmd, prevA, v, ds)
 
-                        // --- NEW: enforce "must meet entryV by the entry point" ---
-                        // This prevents entering the curve above cap and then "teleport clamping".
-                        if dTo > 0 {
-                            aReqEntry := (entryV*entryV - v*v) / (2 * dTo)
-                            // aCmd must be <= aReqEntry (more negative) to be feasible.
-                            if aCmd > aReqEntry {
-                                aCmd = aReqEntry
-                            }
-                            aCmd = math.Max(aCmd, -aLongMax)
-                        }
-                    } else {
-                        aCmd = cruiseAccelCmd(v, aLongMax)
-                    }
-                } else {
-                    aCmd = cruiseAccelCmd(v, aLongMax)
-                }
+				vNext := updateSpeed(v, a, ds)
+				// --- REMOVED: hard clamp to baseTarget to avoid discontinuities ---
 
-                a := applyJerkLimit(aCmd, prevA, v, ds)
+				x += ds * math.Cos(heading)
+				y += ds * math.Sin(heading)
+				totalDistance += ds
+				points = append(points, telemetryPoint{X: x, Y: y, Speed: vNext, Accel: a, Distance: totalDistance, VCap: baseTarget})
 
-                vNext := updateSpeed(v, a, ds)
-                // --- REMOVED: hard clamp to baseTarget to avoid discontinuities ---
+				v = vNext
+				prevA = a
+				remaining -= ds
+			}
 
-                x += ds * math.Cos(heading)
-                y += ds * math.Sin(heading)
-                totalDistance += ds
-                points = append(points, telemetryPoint{X: x, Y: y, Speed: vNext, Accel: a, Distance: totalDistance, VCap: baseTarget})
+		case "curve":
+			if seg.Angle == 0 || seg.Radius <= 0 {
+				continue
+			}
 
-                v = vNext
-                prevA = a
-                remaining -= ds
-            }
+			vCap := math.Sqrt(gmaxParam * g * seg.Radius)
+			curveTarget := math.Min(vCap*entrySafety, baseTarget)
 
-        case "curve":
-            if seg.Angle == 0 || seg.Radius <= 0 {
-                continue
-            }
+			arcLength := seg.Radius * math.Abs(seg.Angle) * math.Pi / 180.0
+			remaining := arcLength
+			isRight := seg.Angle < 0
 
-            vCap := math.Sqrt(gmaxParam * g * seg.Radius)
-            curveTarget := math.Min(vCap*entrySafety, baseTarget)
+			for remaining > 0 {
+				ds := math.Min(stepM, remaining)
 
-            arcLength := seg.Radius * math.Abs(seg.Angle) * math.Pi / 180.0
-            remaining := arcLength
-            isRight := seg.Angle < 0
+				delta := ds / seg.Radius
+				if !isRight {
+					delta = -delta
+				}
 
-            for remaining > 0 {
-                ds := math.Min(stepM, remaining)
+				normalX := -math.Sin(heading)
+				normalY := math.Cos(heading)
+				if !isRight {
+					normalX = math.Sin(heading)
+					normalY = -math.Cos(heading)
+				}
 
-                delta := ds / seg.Radius
-                if !isRight {
-                    delta = -delta
-                }
+				centerX := x + seg.Radius*normalX
+				centerY := y + seg.Radius*normalY
+				dx := x - centerX
+				dy := y - centerY
 
-                normalX := -math.Sin(heading)
-                normalY := math.Cos(heading)
-                if !isRight {
-                    normalX = math.Sin(heading)
-                    normalY = -math.Cos(heading)
-                }
+				c := math.Cos(delta)
+				s := math.Sin(delta)
+				x = centerX + dx*c - dy*s
+				y = centerY + dx*s + dy*c
+				heading += delta
 
-                centerX := x + seg.Radius*normalX
-                centerY := y + seg.Radius*normalY
-                dx := x - centerX
-                dy := y - centerY
+				aLat := (v * v) / seg.Radius
+				aTotalMax := muTire * g
+				aLongMax := math.Sqrt(math.Max(0, aTotalMax*aTotalMax-aLat*aLat))
 
-                c := math.Cos(delta)
-                s := math.Sin(delta)
-                x = centerX + dx*c - dy*s
-                y = centerY + dx*s + dy*c
-                heading += delta
+				// --- NEW: keep the distance to the next cap-drop entry ---
+				distInLap := distInLapFn(totalDistance)
+				horizon := apexLookaheadHorizon(v, vMin, aLongMax, leadInM)
+				nextVLim, dToEntry, okEntry := sharpestApexWithinHorizon(apexTargets, distInLap, lapLength, horizon, wraparound)
 
-                aLat := (v * v) / seg.Radius
-                aTotalMax := muTire * g
-                aLongMax := math.Sqrt(math.Max(0, aTotalMax*aTotalMax-aLat*aLat))
+				targetSpeed := curveTarget
+				if okEntry && nextVLim > 0 {
+					targetSpeed = math.Min(targetSpeed, nextVLim*entrySafety)
+				}
+				dMust := remaining
+				if okEntry && dToEntry > 0 {
+					dMust = dToEntry
+				}
 
-                // --- NEW: keep the distance to the next cap-drop entry ---
-                distInLap := distInLapFn(totalDistance)
-                nextVLim, dToEntry, okEntry := getNext(distInLap)
+				var aCmd float64
 
-                targetSpeed := curveTarget
-                if okEntry && nextVLim > 0 {
-                    targetSpeed = math.Min(targetSpeed, nextVLim*entrySafety)
-                }
+				if v > targetSpeed {
+					aHold := 0.0
+					aCoast := coastDecel(v, vMin, m, g, Crr, rho, Cd, A, theta)
+					aCoast = math.Max(aCoast, -aLongMax)
 
-                var aCmd float64
+					dNeedCoast := coastDistanceToSpeed(v, targetSpeed, Cd, Crr, g, m, A, rho)
+					aNeed := aCoast
+					if dMust > 0 {
+						aNeed = enforceBrakeLookahead(aCoast, v, targetSpeed, dMust, aLongMax)
+					}
+					jerkBuffer := jerkBrakeBufferDistance(prevA, aNeed, v, vMin, jerkMax)
+					blendStart := dNeedCoast + leadInM + jerkBuffer
+					blendEnd := dNeedCoast + jerkBuffer
 
-                if v > targetSpeed {
-                    aHold := 0.0
-                    aCoast := coastDecel(v, vMin, m, g, Crr, rho, Cd, A, theta)
-                    aCoast = math.Max(aCoast, -aLongMax)
+					if dNeedCoast <= 0 {
+						aCmd = aNeed
+					} else if dMust > blendStart {
+						aCmd = aHold
+					} else if dMust > blendEnd {
+						alpha := clamp01((blendStart - dMust) / math.Max(leadInM, 1e-9))
+						aCmd = (1-alpha)*aHold + alpha*aNeed
+					} else {
+						aCmd = aNeed
+					}
+				} else if v < targetSpeed {
+					aPower := accelAtSpeed(v, vMin, rWheel, Tmax, Pmax, etaDrive, m, g, Crr, rho, Cd, A, theta)
+					aCmd = math.Min(aPower, aLongMax)
+				} else {
+					aCmd = 0
+				}
 
-                    dNeedCoast := coastDistanceToSpeed(v, targetSpeed, Cd, Crr, g, m, A, rho)
+				a := applyJerkLimit(aCmd, prevA, v, ds)
 
-                    if dNeedCoast <= 0 {
-                        aCmd = aCoast
-                    } else if remaining > dNeedCoast+leadInM {
-                        aCmd = aHold
-                    } else if remaining > dNeedCoast {
-                        alpha := clamp01((dNeedCoast + leadInM - remaining) / leadInM)
-                        aCmd = (1-alpha)*aHold + alpha*aCoast
-                    } else {
-                        aCmd = aCoast
-                    }
+				vNext := updateSpeed(v, a, ds)
 
-                    // --- NEW: enforce meeting targetSpeed BY the entry point distance, not by end of this segment ---
-                    dMust := remaining
-                    if okEntry && dToEntry > 0 {
-                        dMust = dToEntry
-                    }
-                    if dMust > 0 {
-                        aReq := (targetSpeed*targetSpeed - v*v) / (2 * dMust)
-                        aCmd = math.Max(aReq, aCmd)
-                        aCmd = math.Max(aCmd, -aLongMax)
-                    }
-                } else if v < targetSpeed {
-                    aPower := accelAtSpeed(v, vMin, rWheel, Tmax, Pmax, etaDrive, m, g, Crr, rho, Cd, A, theta)
-                    aCmd = math.Min(aPower, aLongMax)
-                } else {
-                    aCmd = 0
-                }
+				VCapHere := vCap * entrySafety
 
-                a := applyJerkLimit(aCmd, prevA, v, ds)
+				totalDistance += ds
+				points = append(points, telemetryPoint{X: x, Y: y, Speed: vNext, Accel: a, Distance: totalDistance, VCap: VCapHere})
 
-                vNext := updateSpeed(v, a, ds)
+				v = vNext
+				prevA = a
+				remaining -= ds
+			}
+		}
+	}
 
-                VCapHere := vCap * entrySafety
-
-
-                totalDistance += ds
-                points = append(points, telemetryPoint{X: x, Y: y, Speed: vNext, Accel: a, Distance: totalDistance, VCap: VCapHere})
-
-                v = vNext
-                prevA = a
-                remaining -= ds
-            }
-        }
-    }
-
-    return points
+	return points
 }
