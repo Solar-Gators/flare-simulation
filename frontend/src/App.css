@@ -1,5 +1,5 @@
 :root {
-  /* defining named colors that can be reused anywhere in CSS. */
+  /*defining named colors that can be reused anywhere in CSS.*/
   --bg-1: #f3efe8;
   --bg-2: #e6eff5;
   --ink: #1b1d21;
@@ -9,12 +9,11 @@
   --line: #e3d9cd;
 }
 
-/* When I set a width or height, include padding and border inside that size. */
+/*When I set a width or height, include padding and border inside that size.*/
 * {
   box-sizing: border-box;
 }
-
-/* meaning everything visible on the page inherits from or sits inside this styling */
+/*meaning everything visible on the page inherits from or sits inside this styling*/
 body {
   margin: 0;
   color: var(--ink);
@@ -26,7 +25,7 @@ body {
   min-height: 100vh;
 }
 
-/* styling outermost container, wrapper that holds entire app */
+/*styling outermost container, wrapper that holds entire app*/
 #root {
   min-height: 100vh;
   display: grid;
@@ -175,36 +174,6 @@ button:hover {
   margin-top: 12px;
   color: var(--muted);
   font-size: 14px;
-}
-
-/* NEW: checkbox alignment */
-.toggles {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 12px;
-}
-
-.toggles label {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  line-height: 1.2;
-  color: var(--muted);
-  font-size: 13px;
-  letter-spacing: 0.02em;
-
-  /* override global label { display:grid } */
-  grid: none;
-}
-
-.toggles input[type='checkbox'] {
-  width: 16px;
-  height: 16px;
-  margin: 0; /* fixes baseline offset */
-  padding: 0;
-  flex: 0 0 16px;
-  border-radius: 4px;
 }
 
 .tooltip {

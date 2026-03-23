@@ -1,6 +1,7 @@
 import type { FormEvent, MouseEvent } from 'react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import './App.css'
+import TelemetryGraph from './components/TelemetryGraph'
 
 type TelemetryPoint = {
   x: number
@@ -8,7 +9,16 @@ type TelemetryPoint = {
   speed: number
   accel: number
   distance: number
-  vCap: number
+}
+
+type TrackSegment = {
+  d: string
+  speed: number
+  accel: number
+  distance: number
+  color: string
+  x: number
+  y: number
 }
 
 type TooltipState = {
@@ -18,7 +28,6 @@ type TooltipState = {
   speed: number
   accel: number
   distance: number
-  vCap: number
 }
 
 type FieldDef = {
@@ -26,11 +35,11 @@ type FieldDef = {
   label: string
   step: string
   value: string
-  min?: string
-  max?: string
 }
 
+//input fields for distance calculator
 const initialFields: FieldDef[] = [
+  { name: 'v', label: 'v (m/s)', step: '0.1', value: '20' },
   { name: 'batteryWh', label: 'batteryWh', step: '1', value: '5000' },
   { name: 'solarWhPerMin', label: 'solarWhPerMin', step: '0.1', value: '5' },
   { name: 'etaDrive', label: 'etaDrive', step: '0.01', value: '0.9' },
@@ -65,57 +74,21 @@ function toNumber(value: string): number | null {
 
 function speedToColor(speed: number): string {
   const clamped = Math.max(ABS_COLOR_MIN_SPEED, Math.min(speed, ABS_COLOR_MAX_SPEED))
-  const t = (clamped - ABS_COLOR_MIN_SPEED) / Math.max(1e-6, ABS_COLOR_MAX_SPEED - ABS_COLOR_MIN_SPEED)
+  const t =
+    (clamped - ABS_COLOR_MIN_SPEED) / Math.max(1e-6, ABS_COLOR_MAX_SPEED - ABS_COLOR_MIN_SPEED)
   const hue = 120 * t
   return `hsl(${hue}, 80%, 48%)`
 }
 
-function lapDistanceFromTelemetry(points: TelemetryPoint[]): number | null {
-  if (!points || points.length < 2) return null
-  const last = points[points.length - 1]
-  return Number.isFinite(last.distance) && last.distance > 0 ? last.distance : null
-}
-
-async function postDistance(payload: Record<string, number>, wraparound: boolean) {
-  const response = await fetch('http://localhost:8080/distance', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...payload, wraparound }),
-  })
-  const data = await response.json()
-  if (!response.ok || !data.ok) {
-    throw new Error(data?.message || 'Request failed.')
-  }
-  return data as { distanceM: number; optimalV: number; remainingWh: number; ok: boolean }
-}
-
-async function postTelemetry(
-  payload: Record<string, number>,
-  wraparound: boolean,
-  baseTarget: number,
-) {
-  const response = await fetch('http://localhost:8080/track/telemetry', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...payload, wraparound, baseTarget }),
-  })
-  const data = await response.json()
-  if (!response.ok || !data.ok || !Array.isArray(data.points)) {
-    throw new Error(data?.message || 'Failed to load telemetry.')
-  }
-  return data.points as TelemetryPoint[]
-}
-
 function App() {
+  //fields --> current val
+  //setFields -->func to change val
+  //initialFields --> what it shows when first rendered
+  //useState makes changing the UI automatic instead of manually updating DOM
   const [fields, setFields] = useState(initialFields)
-  const [wraparoundLookahead, setWraparoundLookahead] = useState(true)
-
   const [result, setResult] = useState('--')
-  const [optimalV, setOptimalV] = useState<number | null>(null)
-  const [remainingWh, setRemainingWh] = useState<number | null>(null)
-
-  const [status, setStatus] = useState('Fill inputs and press Compute.')
-  const [trackStatus, setTrackStatus] = useState('Track not loaded yet.')
+  const [status, setStatus] = useState('')
+  const [trackStatus, setTrackStatus] = useState('Loading track...')
   const [telemetry, setTelemetry] = useState<TelemetryPoint[]>([])
 
   const [lapDistance, setLapDistance] = useState<number | null>(null)
@@ -129,9 +102,9 @@ function App() {
     speed: 0,
     accel: 0,
     distance: 0,
-    vCap: 0,
   })
 
+  //preparing data needed to draw track
   const { segments, viewBox, speedRange } = useMemo(() => {
     if (telemetry.length < 2) {
       return { segments: [], viewBox: '0 0 600 360', speedRange: [0, 1] as const }
@@ -163,8 +136,8 @@ function App() {
       height + padding * 2,
     ].join(' ')
 
-    const nextSegments = telemetry.slice(1).map((pt, i) => {
-      const prev = telemetry[i]
+    const nextSegments: TrackSegment[] = telemetry.slice(1).map((point, index) => {
+      const prev = telemetry[index]
       return {
         key: `${prev.distance}-${pt.distance}-${i}`,
         d: `M ${prev.x} ${prev.y} L ${pt.x} ${pt.y}`,
@@ -183,48 +156,73 @@ function App() {
     }
   }, [telemetry])
 
+  //run code when react renders
+  //code runs when data from backend is fetched
+  //when state changes react call App func again
+  //App is called whenever a state is changed/ when data of react state var changes
+  useEffect(() => {
+    //sets mount to true, react is rendering App and keeps DOM on page
+    let isMounted = true //is mounted checks if this funcs renders is being used by reacti
+    //async function to await for fetch
+    async function loadTelemetry() {
+      try {
+        //pause async func w/o freezing UI until backend response
+        const response = await fetch('http://localhost:8080/track/telemetry')
+        const data = await response.json()
+        if (!response.ok || !Array.isArray(data.points)) {
+          if (isMounted) setTrackStatus('Failed to load track telemetry.')
+          return
+        }
+        if (isMounted) {
+          setTelemetry(data.points)
+          setTrackStatus(`Telemetry points: ${data.points.length}`)
+        }
+      } catch {
+        if (isMounted) setTrackStatus('Unable to reach backend for track telemetry.')
+      }
+    }
+
+    loadTelemetry()
+    //returning cleanup func when component is about to be unmounted
+    //react is about to remove DOM
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
   const handleInputChange = (name: string, value: string) => {
     setFields((prev) => prev.map((field) => (field.name === name ? { ...field, value } : field)))
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    setStatus('Computing...')
-    setTrackStatus('Updating track...')
+    setStatus('Calculating...')
 
     const payload: Record<string, number> = {}
     for (const field of fields) {
       const value = toNumber(field.value)
       if (value === null) {
         setStatus(`Invalid value for ${field.name}.`)
-        setTrackStatus('Track not updated.')
         return
       }
       payload[field.name] = value
     }
 
     try {
-      const distResp = await postDistance(payload, wraparoundLookahead)
-
-      setResult(Number(distResp.distanceM).toFixed(2))
-      setOptimalV(distResp.optimalV)
-      setRemainingWh(distResp.remainingWh)
-
-      const points = await postTelemetry(payload, wraparoundLookahead, distResp.optimalV)
-      setTelemetry(points)
-
-      const lapM = lapDistanceFromTelemetry(points)
-      setLapDistance(lapM)
-
-      const totalDist = distResp.distanceM
-      setLaps(lapM ? totalDist / lapM : null)
-
+      const response = await fetch('http://localhost:8080/distance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const data = await response.json()
+      if (!response.ok || !data.ok) {
+        setStatus(data.message || 'Request failed.')
+        return
+      }
+      setResult(Number(data.distanceM).toFixed(2))
       setStatus('Success.')
-      setTrackStatus(`Telemetry points: ${points.length}`)
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Request failed.'
-      setStatus(msg)
-      setTrackStatus(msg)
+    } catch {
+      setStatus('Network error. Is the server running?')
     }
   }
 
@@ -233,7 +231,9 @@ function App() {
     speed: number,
     accel: number,
     distance: number,
-    vCap: number,
+    x: number,
+    y: number,
+    color: string,
   ) => {
     setTooltip({
       visible: true,
@@ -242,19 +242,20 @@ function App() {
       speed,
       accel,
       distance,
-      vCap,
     })
+    setHoverPoint({ x, y, color })
   }
 
   const handleSegmentLeave = () => {
     setTooltip((prev) => ({ ...prev, visible: false }))
+    setHoverPoint(null)
   }
 
   return (
     <div className="shell">
       <header>
         <h1>Flare Distance Calculator</h1>
-        <p>Press Compute to optimize speed for full battery depletion by race end.</p>
+        <p>Enter your simulation values and fetch the predicted distance.</p>
       </header>
 
       <section className="panel">
@@ -266,38 +267,19 @@ function App() {
                 <input
                   type="number"
                   step={field.step}
-                  min={field.min}
-                  max={field.max}
                   name={field.name}
                   value={field.value}
-                  onChange={(e) => handleInputChange(field.name, e.target.value)}
+                  onChange={(event) => handleInputChange(field.name, event.target.value)}
                 />
               </label>
             ))}
           </div>
-
-          <div className="toggles">
-            <label>
-              <input
-                type="checkbox"
-                checked={wraparoundLookahead}
-                onChange={(e) => setWraparoundLookahead(e.target.checked)}
-              />
-              Wraparound lookahead (if off: start from 0 speed)
-            </label>
-          </div>
-
           <div className="actions">
-            <button type="submit">Compute</button>
+            <button type="submit">Compute Distance</button>
             <div className="result">
-              Laps: <strong>{laps === null ? '--' : laps.toFixed(2)}</strong>
+              Distance: <strong>{result}</strong> m
             </div>
-            <div className="status">
-              {status} {lapDistance !== null && <small>Lap {lapDistance.toFixed(1)} m</small>}{' '}
-              {optimalV !== null && <small>Optimal v {optimalV.toFixed(2)} m/s</small>}{' '}
-              {remainingWh !== null && <small>Remaining {remainingWh.toFixed(1)} Wh</small>}{' '}
-              <small>Distance {result} m</small>
-            </div>
+            <div className="status">{status}</div>
           </div>
         </form>
       </section>
@@ -337,11 +319,26 @@ function App() {
                 onMouseLeave={handleSegmentLeave}
               />
             ))}
+            {hoverPoint ? (
+              <circle
+                className="track-hover"
+                cx={hoverPoint.x}
+                cy={hoverPoint.y}
+                r={6}
+                fill="#ffffff"
+                stroke={hoverPoint.color}
+                strokeWidth={3}
+                pointerEvents="none"
+              />
+            ) : null}
           </g>
         </svg>
         <div className="track-meta">
-          {trackStatus} · Actual speed range {speedRange[0].toFixed(2)}–{speedRange[1].toFixed(2)} m/s ·
-          Color scale {ABS_COLOR_MIN_SPEED.toFixed(2)}–{ABS_COLOR_MAX_SPEED.toFixed(2)} m/s
+          {trackStatus} · Actual speed range {speedRange[0].toFixed(2)}–{speedRange[1].toFixed(2)}{' '}
+          m/s · Color scale {ABS_COLOR_MIN_SPEED.toFixed(2)}–{ABS_COLOR_MAX_SPEED.toFixed(2)} m/s
+        </div>
+        <div style={{ marginTop: 12 }}>
+          <TelemetryGraph telemetry={telemetry} />
         </div>
       </section>
 
@@ -351,10 +348,6 @@ function App() {
       >
         <div>
           Speed: <strong>{tooltip.speed.toFixed(2)}</strong> m/s
-        </div>
-        <div>
-          Vmax (gmax):{' '}
-          <strong>{Number.isFinite(tooltip.vCap) ? tooltip.vCap.toFixed(2) : '--'}</strong> m/s
         </div>
         <div>Accel: {tooltip.accel.toFixed(3)} m/s²</div>
         <div>Dist: {tooltip.distance.toFixed(1)} m</div>
