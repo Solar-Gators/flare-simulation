@@ -1,3 +1,8 @@
+//important coasting decel is not a constant rate
+//speed profile first then sim (backwards pass first)
+
+// quick notes:
+// lets try a speed limit map for the whole track
 package main
 
 import (
@@ -301,7 +306,6 @@ func buildTelemetry(segments []trackSegment) []telemetryPoint {
 		stepM    = 1.0
 		gmax     = 0.8
 		muTire   = 0.9
-		brakePct = 0.95
 		maxSpeed = 40.0
 		vMin     = 0.5
 		A        = 0.456
@@ -317,59 +321,68 @@ func buildTelemetry(segments []trackSegment) []telemetryPoint {
 		etaDrive = 0.90
 	)
 
+	track := Track{Segments: make([]Segment, 0, len(segments))}
+	for _, seg := range segments {
+		switch seg.Type {
+		case "straight":
+			track.Segments = append(track.Segments, Segment{Length: seg.Length})
+		case "curve":
+			track.Segments = append(track.Segments, Segment{Radius: seg.Radius, Angle: seg.Angle})
+		}
+	}
+	samples := sampleTrackMeters(track, stepM, g, gmax)
+	cruiseCap := math.Min(maxSpeed, optimalCruiseSpeed)
+	if cruiseCap <= 0 {
+		cruiseCap = maxSpeed
+	}
+	profiles := buildProfiles(samples, cruiseCap, 0.95*g, vMin, m, g, Crr, rho, Cd, A, theta)
+
 	points := make([]telemetryPoint, 0, 64)
 	x, y, heading := 0.0, 0.0, 0.0
 	v := 0.5
 	distance := 0.0
+	profileIdx := 0
 	points = append(points, telemetryPoint{X: x, Y: y, Speed: v, Accel: 0, Distance: distance})
 
-	baseTarget := maxSpeed
-	if optimalCruiseSpeed > 0 {
-		baseTarget = optimalCruiseSpeed
-	}
-	if maxSpeed > 0 && baseTarget > maxSpeed {
-		baseTarget = maxSpeed
-	}
-
-	for i, seg := range segments {
+	for _, seg := range segments {
 		switch seg.Type {
 		//when we are dealing with a straight segment
 		case "straight":
-			nextCurveCap := 0.0
-			//if next segment is a curve find max curve speed
-			if i+1 < len(segments) && segments[i+1].Type == "curve" && segments[i+1].Radius > 0 {
-				nextCurveCap = math.Sqrt(gmax * g * segments[i+1].Radius)
-			}
 			remaining := seg.Length
 			for remaining > 0 {
 				ds := math.Min(stepM, remaining) //going thru every stepM meters (10m)
-				targetSpeed := baseTarget
-				if nextCurveCap > 0 && v > nextCurveCap*brakePct {
-					targetSpeed = math.Min(targetSpeed, nextCurveCap)
+				brakeSpeed := cruiseCap
+				coastSpeed := cruiseCap
+				if profileIdx < len(profiles.Brake) {
+					brakeSpeed = profiles.Brake[profileIdx]
+				}
+				if profileIdx < len(profiles.Coast) {
+					coastSpeed = profiles.Coast[profileIdx]
 				}
 				aLongMax := muTire * g
 				var a float64
-				if v > targetSpeed {
-					aReq := (targetSpeed*targetSpeed - v*v) / (2 * remaining)
+				if v > brakeSpeed {
+					aReq := (brakeSpeed*brakeSpeed - v*v) / (2 * ds)
 					a = math.Max(aReq, -aLongMax)
-				} else if v < targetSpeed {
+				} else if v > coastSpeed {
+					aCoast := coastDecelFromPower(v, vMin, m, g, Crr, rho, Cd, A, theta)
+					a = math.Max(aCoast, -aLongMax)
+				} else {
 					aPower := accelAtSpeed(v, vMin, rWheel, Tmax, Pmax, etaDrive, m, g, Crr, rho, Cd, A, theta)
 					a = math.Min(aPower, aLongMax)
-				} else {
-					a = 0
 				}
 				vNext := updateSpeed(v, a, ds)
-				if vNext > targetSpeed {
-					vNext = targetSpeed
+				if vNext > brakeSpeed {
+					vNext = brakeSpeed
 				}
 				//update position
 				x += ds * math.Cos(heading)
 				y += ds * math.Sin(heading)
 				distance += ds
 				points = append(points, telemetryPoint{X: x, Y: y, Speed: vNext, Accel: a, Distance: distance})
-				log.Printf("speed=%.2f accel=%.3f", v, a)
 				v = vNext
 				remaining -= ds
+				profileIdx++
 			}
 		case "curve":
 			if seg.Angle == 0 {
@@ -382,10 +395,6 @@ func buildTelemetry(segments []trackSegment) []telemetryPoint {
 			}
 			aLatMax := gmax * g
 			vCap := math.Sqrt(aLatMax * seg.Radius)
-			targetSpeed := math.Min(vCap, baseTarget)
-			if maxSpeed > 0 && targetSpeed > maxSpeed {
-				targetSpeed = maxSpeed
-			}
 			angleDeg := seg.Angle
 			arcLength := seg.Radius * math.Abs(angleDeg) * math.Pi / 180.0
 			remaining := arcLength
@@ -393,6 +402,20 @@ func buildTelemetry(segments []trackSegment) []telemetryPoint {
 			//computes data points for each step along curve segment
 			for remaining > 0 {
 				ds := math.Min(stepM, remaining)
+				brakeSpeed := cruiseCap
+				coastSpeed := cruiseCap
+				if profileIdx < len(profiles.Brake) {
+					brakeSpeed = profiles.Brake[profileIdx]
+				}
+				if profileIdx < len(profiles.Coast) {
+					coastSpeed = profiles.Coast[profileIdx]
+				}
+				if brakeSpeed > vCap {
+					brakeSpeed = vCap
+				}
+				if coastSpeed > vCap {
+					coastSpeed = vCap
+				}
 				delta := ds / seg.Radius
 				if !isRight {
 					delta = -delta
@@ -418,22 +441,24 @@ func buildTelemetry(segments []trackSegment) []telemetryPoint {
 				aTotalMax := muTire * g
 				aLongMax := math.Sqrt(math.Max(0, aTotalMax*aTotalMax-aLat*aLat))
 				var a float64
-				if v > targetSpeed {
-					aReq := (targetSpeed*targetSpeed - v*v) / (2 * remaining)
+				if v > brakeSpeed {
+					aReq := (brakeSpeed*brakeSpeed - v*v) / (2 * ds)
 					a = math.Max(aReq, -aLongMax)
-				} else if v < targetSpeed {
+				} else if v > coastSpeed {
+					aCoast := coastDecelFromPower(v, vMin, m, g, Crr, rho, Cd, A, theta)
+					a = math.Max(aCoast, -aLongMax)
+				} else {
 					aPower := accelAtSpeed(v, vMin, rWheel, Tmax, Pmax, etaDrive, m, g, Crr, rho, Cd, A, theta)
 					a = math.Min(aPower, aLongMax)
-				} else {
-					a = 0
 				}
 				vNext := updateSpeed(v, a, ds)
-				if vNext > targetSpeed {
-					vNext = targetSpeed
+				if vNext > brakeSpeed {
+					vNext = brakeSpeed
 				}
 				points = append(points, telemetryPoint{X: x, Y: y, Speed: vNext, Accel: a, Distance: distance})
 				v = vNext
 				remaining -= ds
+				profileIdx++
 			}
 		}
 	}
