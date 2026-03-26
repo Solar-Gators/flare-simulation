@@ -139,33 +139,6 @@ button:hover {
   background: #fffdf8;
 }
 
-.track-controls {
-  margin: 12px 0 8px;
-}
-
-.range-control {
-  max-width: 420px;
-}
-
-.range-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.range-row input[type='range'] {
-  width: min(320px, 70vw);
-  accent-color: var(--accent);
-}
-
-.range-value {
-  min-width: 56px;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink);
-  font-weight: 600;
-}
-
 .track-layer path {
   transition: stroke 160ms ease;
 }

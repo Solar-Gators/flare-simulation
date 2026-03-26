@@ -138,7 +138,8 @@ function speedToColor(speed: number): string {
 
 const ABS_SPEED_LEGEND_GRADIENT = `linear-gradient(90deg, ${ABS_SPEED_COLOR_STOPS.map((stop) => {
   const offset =
-    ((stop.speed - ABS_COLOR_MIN_SPEED) / Math.max(1e-6, ABS_COLOR_MAX_SPEED - ABS_COLOR_MIN_SPEED)) *
+    ((stop.speed - ABS_COLOR_MIN_SPEED) /
+      Math.max(1e-6, ABS_COLOR_MAX_SPEED - ABS_COLOR_MIN_SPEED)) *
     100
   return `${rgbToCss(stop.color)} ${offset.toFixed(1)}%`
 }).join(', ')})`
@@ -353,22 +354,6 @@ function App() {
 
       <section className="panel">
         <h2>Track Preview</h2>
-        <div className="track-controls">
-          <label className="range-control">
-            <span>Track width</span>
-            <div className="range-row">
-              <input
-                type="range"
-                min="6"
-                max="60"
-                step="1"
-                value={trackWidth}
-                onChange={(e) => setTrackWidth(Number(e.target.value))}
-              />
-              <span className="range-value">{trackWidth}px</span>
-            </div>
-          </label>
-        </div>
         <svg className="track-frame" viewBox={viewBox} role="img" aria-label="Track visualization">
           <g className="track-layer">
             {segments.map((seg) => (
@@ -402,7 +387,10 @@ function App() {
         </svg>
         <div className="speed-legend" aria-label="Absolute speed legend">
           <div className="speed-legend-title">Absolute speed color scale</div>
-          <div className="speed-legend-bar" style={{ backgroundImage: ABS_SPEED_LEGEND_GRADIENT }} />
+          <div
+            className="speed-legend-bar"
+            style={{ backgroundImage: ABS_SPEED_LEGEND_GRADIENT }}
+          />
           <div className="speed-legend-scale">
             {ABS_COLOR_TICKS.map((tick) => (
               <span key={tick}>{tick.toFixed(0)} m/s</span>
@@ -410,8 +398,7 @@ function App() {
           </div>
         </div>
         <div className="track-meta">
-          {trackStatus} · Actual speed range {speedRange[0].toFixed(2)}–{speedRange[1].toFixed(2)}{' '}
-          m/s · Color scale {ABS_COLOR_MIN_SPEED.toFixed(2)}–{ABS_COLOR_MAX_SPEED.toFixed(2)} m/s
+          {trackStatus} · Speed range {speedRange[0].toFixed(2)}–{speedRange[1].toFixed(2)} m/s
         </div>
         <div style={{ marginTop: 12 }}>
           <TelemetryGraph telemetry={telemetry} />

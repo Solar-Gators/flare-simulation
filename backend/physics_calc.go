@@ -173,50 +173,6 @@ func backwardCoastFeasibilityPass(
 	return feasible
 }
 
-// enforceBrakeLookahead tightens a coast-first/brake-only-as-needed command so the
-// target speed is still reachable by the lookahead distance.
-func enforceBrakeLookahead(aCmd, vNow, vTarget, distToTarget, aBrakeMax float64) float64 {
-	if aBrakeMax <= 0 {
-		if aCmd < 0 {
-			return 0
-		}
-		return aCmd
-	}
-	if distToTarget > 0 {
-		aReq := (vTarget*vTarget - vNow*vNow) / (2 * distToTarget)
-		if aCmd > aReq {
-			aCmd = aReq
-		}
-	}
-	if aCmd < -aBrakeMax {
-		aCmd = -aBrakeMax
-	}
-	return aCmd
-}
-
-// jerkBrakeBufferDistance estimates the extra distance needed to ramp from the
-// current longitudinal acceleration to a more negative braking command.
-func jerkBrakeBufferDistance(aPrev, aTarget, vNow, vMin, jerkMax float64) float64 {
-	if jerkMax <= 0 || aTarget >= aPrev {
-		return 0
-	}
-	tRamp := (aPrev - aTarget) / jerkMax
-	return math.Max(vNow, vMin) * tRamp
-}
-
-// apexLookaheadHorizon estimates how far ahead to search for an upcoming apex.
-func apexLookaheadHorizon(vNow, vMin, aBrakeMax, leadInM float64) float64 {
-	const minLookaheadM = 80.0
-
-	if aBrakeMax <= 0 {
-		return minLookaheadM
-	}
-
-	vEff := math.Max(vNow, vMin)
-	brakeDistance := (vEff * vEff) / (2 * aBrakeMax)
-	return math.Max(minLookaheadM, brakeDistance+leadInM+vEff)
-}
-
 // buildProfiles constructs base, brake-feasible, and coast-feasible profiles together.
 func buildProfiles(
 	samples []trackSample,
