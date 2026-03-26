@@ -176,6 +176,33 @@ button:hover {
   font-size: 14px;
 }
 
+.speed-legend {
+  margin-top: 14px;
+}
+
+.speed-legend-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 8px;
+}
+
+.speed-legend-bar {
+  height: 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(27, 29, 33, 0.12);
+}
+
+.speed-legend-scale {
+  margin-top: 6px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
 .tooltip {
   position: fixed;
   z-index: 10;
