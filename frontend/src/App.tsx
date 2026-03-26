@@ -54,29 +54,19 @@ const initialFields: FieldDef[] = [
   { name: 'cD', label: 'cD', step: '0.01', value: '0.21' },
   { name: 'a', label: 'a (m^2)', step: '0.001', value: '0.456' },
   { name: 'theta', label: 'theta (rad)', step: '0.001', value: '0' },
-  {
-    name: 'gmax',
-    label: 'gmax (lateral g limit)',
-    step: '0.01',
-    value: '1.00',
-    min: '0.1',
-    max: '2.0',
-  },
 ]
 
-const ABS_COLOR_MIN_SPEED = 18.5
-const ABS_COLOR_MAX_SPEED = 25.0
-
+//checking user input is num
 function toNumber(value: string): number | null {
   const num = Number.parseFloat(value)
   return Number.isFinite(num) ? num : null
 }
 
-function speedToColor(speed: number): string {
-  const clamped = Math.max(ABS_COLOR_MIN_SPEED, Math.min(speed, ABS_COLOR_MAX_SPEED))
-  const t =
-    (clamped - ABS_COLOR_MIN_SPEED) / Math.max(1e-6, ABS_COLOR_MAX_SPEED - ABS_COLOR_MIN_SPEED)
-  const hue = 120 * t
+//converting speed information into corresponding color
+function speedToColor(speed: number, minSpeed: number, maxSpeed: number): string {
+  const clamped = Math.max(minSpeed, Math.min(speed, maxSpeed))
+  const t = (clamped - minSpeed) / Math.max(1e-6, maxSpeed - minSpeed)
+  const hue = 210 - 210 * t
   return `hsl(${hue}, 80%, 48%)`
 }
 
@@ -90,11 +80,7 @@ function App() {
   const [status, setStatus] = useState('')
   const [trackStatus, setTrackStatus] = useState('Loading track...')
   const [telemetry, setTelemetry] = useState<TelemetryPoint[]>([])
-
-  const [lapDistance, setLapDistance] = useState<number | null>(null)
-  const [laps, setLaps] = useState<number | null>(null)
-  const [trackWidth, setTrackWidth] = useState(30)
-
+  const [hoverPoint, setHoverPoint] = useState<{ x: number; y: number; color: string } | null>(null)
   const [tooltip, setTooltip] = useState<TooltipState>({
     visible: false,
     x: 0,
@@ -139,13 +125,13 @@ function App() {
     const nextSegments: TrackSegment[] = telemetry.slice(1).map((point, index) => {
       const prev = telemetry[index]
       return {
-        key: `${prev.distance}-${pt.distance}-${i}`,
-        d: `M ${prev.x} ${prev.y} L ${pt.x} ${pt.y}`,
-        speed: pt.speed,
-        accel: pt.accel,
-        distance: pt.distance,
-        vCap: pt.vCap,
-        color: speedToColor(pt.speed),
+        d: `M ${prev.x} ${prev.y} L ${point.x} ${point.y}`,
+        speed: point.speed,
+        accel: point.accel,
+        distance: point.distance,
+        color: speedToColor(point.speed, minSpeed, maxSpeed),
+        x: point.x,
+        y: point.y,
       }
     })
 
@@ -286,38 +272,39 @@ function App() {
 
       <section className="panel">
         <h2>Track Preview</h2>
-        <div className="track-controls">
-          <label className="range-control">
-            <span>Track width</span>
-            <div className="range-row">
-              <input
-                type="range"
-                min="6"
-                max="60"
-                step="1"
-                value={trackWidth}
-                onChange={(e) => setTrackWidth(Number(e.target.value))}
-              />
-              <span className="range-value">{trackWidth}px</span>
-            </div>
-          </label>
-        </div>
         <svg className="track-frame" viewBox={viewBox} role="img" aria-label="Track visualization">
           <g className="track-layer">
-            {segments.map((seg) => (
-              <path
-                key={seg.key}
-                d={seg.d}
-                fill="none"
-                stroke={seg.color}
-                strokeWidth={trackWidth}
-                strokeLinecap="round"
-                pointerEvents="stroke"
-                onMouseMove={(e) =>
-                  handleSegmentMove(e, seg.speed, seg.accel, seg.distance, seg.vCap)
-                }
-                onMouseLeave={handleSegmentLeave}
-              />
+            {segments.map((segment, index) => (
+              <g key={`${segment.distance}-${index}`}>
+                <path
+                  d={segment.d}
+                  fill="none"
+                  stroke={segment.color}
+                  strokeWidth={30}
+                  strokeLinecap="round"
+                  pointerEvents="none"
+                />
+                <path
+                  d={segment.d}
+                  fill="none"
+                  stroke="rgba(0,0,0,0)"
+                  strokeWidth={20}
+                  strokeLinecap="round"
+                  pointerEvents="stroke"
+                  onMouseMove={(event) =>
+                    handleSegmentMove(
+                      event,
+                      segment.speed,
+                      segment.accel,
+                      segment.distance,
+                      segment.x,
+                      segment.y,
+                      segment.color,
+                    )
+                  }
+                  onMouseLeave={handleSegmentLeave}
+                />
+              </g>
             ))}
             {hoverPoint ? (
               <circle
@@ -334,8 +321,7 @@ function App() {
           </g>
         </svg>
         <div className="track-meta">
-          {trackStatus} · Actual speed range {speedRange[0].toFixed(2)}–{speedRange[1].toFixed(2)}{' '}
-          m/s · Color scale {ABS_COLOR_MIN_SPEED.toFixed(2)}–{ABS_COLOR_MAX_SPEED.toFixed(2)} m/s
+          {trackStatus} · Speed range {speedRange[0].toFixed(2)}–{speedRange[1].toFixed(2)} m/s
         </div>
         <div style={{ marginTop: 12 }}>
           <TelemetryGraph telemetry={telemetry} />

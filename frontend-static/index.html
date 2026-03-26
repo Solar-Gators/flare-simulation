@@ -304,8 +304,6 @@
       const trackStatus = document.getElementById("track-status");
       const trackSvg = document.querySelector(".track-frame");
       const trackTooltip = document.getElementById("track-tooltip");
-      const ABS_COLOR_MIN_SPEED = 18.5;
-      const ABS_COLOR_MAX_SPEED = 25.0;
 
       const fields = [
         "v",
@@ -331,10 +329,10 @@
       }
 
       //maps speed to a color
-      function speedToColor(speed) {
-        const clamped = Math.max(ABS_COLOR_MIN_SPEED, Math.min(speed, ABS_COLOR_MAX_SPEED));
-        const t = (clamped - ABS_COLOR_MIN_SPEED) / Math.max(1e-6, ABS_COLOR_MAX_SPEED - ABS_COLOR_MIN_SPEED);
-        const hue = 120 * t;
+      function speedToColor(speed, minSpeed, maxSpeed) {
+        const clamped = Math.max(minSpeed, Math.min(speed, maxSpeed));
+        const t = (clamped - minSpeed) / Math.max(1e-6, maxSpeed - minSpeed);
+        const hue = 210 - 210 * t;
         return `hsl(${hue}, 80%, 48%)`;
       }
 
@@ -355,11 +353,15 @@
         let maxX = points[0].x;
         let minY = points[0].y;
         let maxY = points[0].y;
+        let minSpeed = points[0].speed;
+        let maxSpeed = points[0].speed;
         for (const pt of points) {
           minX = Math.min(minX, pt.x);
           maxX = Math.max(maxX, pt.x);
           minY = Math.min(minY, pt.y);
           maxY = Math.max(maxY, pt.y);
+          minSpeed = Math.min(minSpeed, pt.speed);
+          maxSpeed = Math.max(maxSpeed, pt.speed);
         }
 
         //turning bounded box to SVG viewbox for box to fit nicely in frame
@@ -386,7 +388,7 @@
           const d = `M ${prev.x} ${prev.y} L ${curr.x} ${curr.y}`;
           path.setAttribute("d", d);
           path.setAttribute("fill", "none");
-          path.setAttribute("stroke", speedToColor(curr.speed));
+          path.setAttribute("stroke", speedToColor(curr.speed, minSpeed, maxSpeed));
           path.setAttribute("stroke-width", strokeWidth);
           path.setAttribute("stroke-linecap", "round");
           path.dataset.speed = curr.speed.toFixed(2);
