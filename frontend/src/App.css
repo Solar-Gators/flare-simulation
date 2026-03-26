@@ -208,3 +208,35 @@ button:hover {
     transform: translateY(0);
   }
 }
+
+/* spacing/layout for the preset row (dropdown + buttons) */
+.preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+/* extra space specifically after the dropdown/label before the buttons */
+.preset-row label {
+  margin-right: 12px;
+}
+
+/* make the dropdown match your inputs */
+.preset-row select {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 15px;
+  background: #ffffff;
+  color: var(--ink);
+}
+
+.preset-row select:focus {
+  outline: 2px solid rgba(214, 74, 58, 0.35);
+  border-color: var(--accent);
+}
+
+.inputs-block {
+  margin-top: 14px; 
+}
