@@ -302,6 +302,13 @@ func trackTelemetryHandler(w http.ResponseWriter, r *http.Request) {
 // fixed our issue of V approaching and reaching 0 bc of curves by removing continuous coasting decel curves and replacing by controlled approach to target curve speed
 // we essentially established a baseline for the optimal speed around curve instead of always taking foot off gas when approaching curve.
 func buildTelemetry(segments []trackSegment) []telemetryPoint {
+	return buildTelemetryOneLap(segments, 0.5)
+}
+
+// buildTelemetryOneLap simulates a single lap and starts from the provided speed.
+// This is the primitive needed for later wraparound support, where one lap warms up
+// the state and the next lap starts from the previous lap's terminal speed.
+func buildTelemetryOneLap(segments []trackSegment, startSpeed float64) []telemetryPoint {
 	const (
 		stepM    = 1.0
 		gmax     = 0.8
@@ -339,7 +346,10 @@ func buildTelemetry(segments []trackSegment) []telemetryPoint {
 
 	points := make([]telemetryPoint, 0, 64)
 	x, y, heading := 0.0, 0.0, 0.0
-	v := 0.5
+	if math.IsNaN(startSpeed) || math.IsInf(startSpeed, 0) || startSpeed < 0 {
+		startSpeed = 0.5
+	}
+	v := startSpeed
 	distance := 0.0
 	profileIdx := 0
 	points = append(points, telemetryPoint{X: x, Y: y, Speed: v, Accel: 0, Distance: distance})
