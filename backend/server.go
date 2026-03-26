@@ -290,7 +290,17 @@ func trackTelemetryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	segments := defaultTrackSegments()
-	points := buildTelemetry(segments)
+	points, err := buildTelemetry(segments)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, struct {
+			Points  []telemetryPoint `json:"points"`
+			Message string           `json:"message,omitempty"`
+		}{
+			Points:  []telemetryPoint{},
+			Message: err.Error(),
+		})
+		return
+	}
 	writeJSON(w, http.StatusOK, telemetryResponse{Points: points})
 }
 
@@ -301,14 +311,29 @@ func trackTelemetryHandler(w http.ResponseWriter, r *http.Request) {
 // we have target cruise speed to prevent the car from accelerating forever if V is below we accelerate and if above we brake
 // fixed our issue of V approaching and reaching 0 bc of curves by removing continuous coasting decel curves and replacing by controlled approach to target curve speed
 // we essentially established a baseline for the optimal speed around curve instead of always taking foot off gas when approaching curve.
-func buildTelemetry(segments []trackSegment) []telemetryPoint {
-	return buildTelemetryOneLap(segments, 0.5)
+const (
+	defaultTelemetryStartSpeed = 0.5
+	telemetryWarmupMaxLaps     = 5
+	telemetryWarmupTolerance   = 1e-3
+)
+
+func buildTelemetry(segments []trackSegment) ([]telemetryPoint, error) {
+	startSpeed, err := warmTelemetryStartSpeed(
+		segments,
+		defaultTelemetryStartSpeed,
+		telemetryWarmupMaxLaps,
+		telemetryWarmupTolerance,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return buildTelemetryOneLap(segments, startSpeed)
 }
 
 // buildTelemetryOneLap simulates a single lap and starts from the provided speed.
 // This is the primitive needed for later wraparound support, where one lap warms up
 // the state and the next lap starts from the previous lap's terminal speed.
-func buildTelemetryOneLap(segments []trackSegment, startSpeed float64) []telemetryPoint {
+func buildTelemetryOneLap(segments []trackSegment, startSpeed float64) ([]telemetryPoint, error) {
 	const (
 		stepM    = 1.0
 		gmax     = 0.8
@@ -346,8 +371,10 @@ func buildTelemetryOneLap(segments []trackSegment, startSpeed float64) []telemet
 
 	points := make([]telemetryPoint, 0, 64)
 	x, y, heading := 0.0, 0.0, 0.0
-	if math.IsNaN(startSpeed) || math.IsInf(startSpeed, 0) || startSpeed < 0 {
-		startSpeed = 0.5
+	var err error
+	startSpeed, err = validateTelemetryStartSpeed(startSpeed)
+	if err != nil {
+		return nil, err
 	}
 	v := startSpeed
 	distance := 0.0
@@ -473,7 +500,59 @@ func buildTelemetryOneLap(segments []trackSegment, startSpeed float64) []telemet
 		}
 	}
 
-	return points
+	return points, nil
+}
+
+func validateTelemetryStartSpeed(startSpeed float64) (float64, error) {
+	if math.IsNaN(startSpeed) || math.IsInf(startSpeed, 0) || startSpeed < 0 {
+		return 0, fmt.Errorf("invalid telemetry start speed: %v", startSpeed)
+	}
+	return startSpeed, nil
+}
+
+func telemetryTerminalSpeed(points []telemetryPoint) (float64, error) {
+	if len(points) == 0 {
+		return 0, fmt.Errorf("telemetry lap produced no points")
+	}
+	return validateTelemetryStartSpeed(points[len(points)-1].Speed)
+}
+
+// warmTelemetryStartSpeed repeatedly runs one-lap simulations and carries each
+// lap's terminal speed into the next lap's start until the start/end speed
+// difference is small or the iteration cap is reached.
+func warmTelemetryStartSpeed(
+	segments []trackSegment,
+	initialStartSpeed float64,
+	maxLaps int,
+	tolerance float64,
+) (float64, error) {
+	startSpeed, err := validateTelemetryStartSpeed(initialStartSpeed)
+	if err != nil {
+		return 0, err
+	}
+	if maxLaps <= 0 {
+		return startSpeed, nil
+	}
+	if tolerance < 0 || math.IsNaN(tolerance) || math.IsInf(tolerance, 0) {
+		tolerance = telemetryWarmupTolerance
+	}
+
+	for lap := 0; lap < maxLaps; lap++ {
+		points, err := buildTelemetryOneLap(segments, startSpeed)
+		if err != nil {
+			return 0, err
+		}
+		nextStartSpeed, err := telemetryTerminalSpeed(points)
+		if err != nil {
+			return 0, err
+		}
+		if math.Abs(nextStartSpeed-startSpeed) <= tolerance {
+			return nextStartSpeed, nil
+		}
+		startSpeed = nextStartSpeed
+	}
+
+	return startSpeed, nil
 }
 
 // calculates accel at a given v
