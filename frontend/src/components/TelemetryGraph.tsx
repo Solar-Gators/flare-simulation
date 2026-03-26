@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   LineChart,
   Line,
@@ -124,6 +124,14 @@ export default function TelemetryGraph({ telemetry }: Props) {
         <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
           Show all points
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <input
+            type="checkbox"
+            checked={normalize100}
+            onChange={(e) => setNormalize100(e.target.checked)}
+          />
+          Bin by 100 m
         </label>
         <div style={{ marginLeft: 'auto', fontSize: 13, color: '#666' }}>{telemetry.length} points</div>
       </div>
