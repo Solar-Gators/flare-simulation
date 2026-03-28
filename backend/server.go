@@ -15,7 +15,6 @@ import (
 	"log"
 	"math"
 	"net/http" //lets go program talk over web --> Receive requests and send responses
-	"strconv"
 )
 
 type distanceRequest struct {
@@ -290,44 +289,9 @@ func trackTelemetryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wraparound, err := telemetryWraparoundFromQuery(r)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, struct {
-			Points  []telemetryPoint `json:"points"`
-			Message string           `json:"message,omitempty"`
-		}{
-			Points:  []telemetryPoint{},
-			Message: err.Error(),
-		})
-		return
-	}
-
 	segments := defaultTrackSegments()
-	points, err := buildTelemetry(segments, wraparound)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, struct {
-			Points  []telemetryPoint `json:"points"`
-			Message string           `json:"message,omitempty"`
-		}{
-			Points:  []telemetryPoint{},
-			Message: err.Error(),
-		})
-		return
-	}
+	points := buildTelemetry(segments)
 	writeJSON(w, http.StatusOK, telemetryResponse{Points: points})
-}
-
-func telemetryWraparoundFromQuery(r *http.Request) (bool, error) {
-	raw := r.URL.Query().Get("wraparound")
-	if raw == "" {
-		return true, nil
-	}
-
-	wraparound, err := strconv.ParseBool(raw)
-	if err != nil {
-		return false, fmt.Errorf("invalid wraparound query value %q", raw)
-	}
-	return wraparound, nil
 }
 
 // returns a list of points (x,y,speed,accel,distance)
@@ -340,42 +304,24 @@ func telemetryWraparoundFromQuery(r *http.Request) (bool, error) {
 const (
 	defaultTelemetryStartSpeed = 0.5
 	telemetryWarmupMaxLaps     = 5
-	telemetryWrapProfileLaps   = 3
 	telemetryWarmupTolerance   = 1e-3
 )
 
-func buildTelemetry(segments []trackSegment, wraparound bool) ([]telemetryPoint, error) {
-	if !wraparound {
-		return buildTelemetryOneLapWithWraparound(segments, defaultTelemetryStartSpeed, false)
-	}
-
-	startSpeed, err := warmTelemetryStartSpeed(
+// wrapper
+func buildTelemetry(segments []trackSegment) []telemetryPoint {
+	startSpeed := warmTelemetryStartSpeed(
 		segments,
 		defaultTelemetryStartSpeed,
 		telemetryWarmupMaxLaps,
 		telemetryWarmupTolerance,
 	)
-	if err != nil {
-		return nil, err
-	}
-	return buildTelemetryOneLapWithWraparound(segments, startSpeed, true)
+	return buildTelemetryOneLap(segments, startSpeed)
 }
 
 // buildTelemetryOneLap simulates a single lap and starts from the provided speed.
 // This is the primitive needed for later wraparound support, where one lap warms up
 // the state and the next lap starts from the previous lap's terminal speed.
-func buildTelemetryOneLap(segments []trackSegment, startSpeed float64) ([]telemetryPoint, error) {
-	return buildTelemetryOneLapWithWraparound(segments, startSpeed, true)
-}
-
-// buildTelemetryOneLapWithWraparound simulates one lap and chooses whether the
-// brake/coast profiles should look only within the current lap or continue
-// across the finish line into the next lap.
-func buildTelemetryOneLapWithWraparound(
-	segments []trackSegment,
-	startSpeed float64,
-	wraparound bool,
-) ([]telemetryPoint, error) {
+func buildTelemetryOneLap(segments []trackSegment, startSpeed float64) []telemetryPoint {
 	const (
 		stepM    = 1.0
 		gmax     = 0.8
@@ -395,37 +341,25 @@ func buildTelemetryOneLapWithWraparound(
 		etaDrive = 0.90
 	)
 
-	track := telemetryTrackFromSegments(segments)
+	track := Track{Segments: make([]Segment, 0, len(segments))}
+	for _, seg := range segments {
+		switch seg.Type {
+		case "straight":
+			track.Segments = append(track.Segments, Segment{Length: seg.Length})
+		case "curve":
+			track.Segments = append(track.Segments, Segment{Radius: seg.Radius, Angle: seg.Angle})
+		}
+	}
+	samples := sampleTrackMeters(track, stepM, g, gmax)
 	cruiseCap := math.Min(maxSpeed, optimalCruiseSpeed)
 	if cruiseCap <= 0 {
 		cruiseCap = maxSpeed
 	}
-	profiles, err := buildTelemetryProfiles(
-		track,
-		wraparound,
-		stepM,
-		gmax,
-		cruiseCap,
-		0.95*g,
-		vMin,
-		m,
-		g,
-		Crr,
-		rho,
-		Cd,
-		A,
-		theta,
-	)
-	if err != nil {
-		return nil, err
-	}
+	profiles := buildProfiles(samples, cruiseCap, 0.95*g, vMin, m, g, Crr, rho, Cd, A, theta)
 
 	points := make([]telemetryPoint, 0, 64)
 	x, y, heading := 0.0, 0.0, 0.0
-	startSpeed, err = validateTelemetryStartSpeed(startSpeed)
-	if err != nil {
-		return nil, err
-	}
+	startSpeed = sanitizeTelemetryStartSpeed(startSpeed)
 	v := startSpeed
 	distance := 0.0
 	profileIdx := 0
@@ -550,123 +484,58 @@ func buildTelemetryOneLapWithWraparound(
 		}
 	}
 
-	return points, nil
+	return points
 }
 
-func telemetryTrackFromSegments(segments []trackSegment) Track {
-	track := Track{Segments: make([]Segment, 0, len(segments))}
-	for _, seg := range segments {
-		switch seg.Type {
-		case "straight":
-			track.Segments = append(track.Segments, Segment{Length: seg.Length})
-		case "curve":
-			track.Segments = append(track.Segments, Segment{Radius: seg.Radius, Angle: seg.Angle})
-		}
-	}
-	return track
-}
-
-func repeatTrack(track Track, laps int) Track {
-	if laps <= 0 || len(track.Segments) == 0 {
-		return Track{Segments: []Segment{}}
-	}
-
-	repeated := Track{Segments: make([]Segment, 0, len(track.Segments)*laps)}
-	for lap := 0; lap < laps; lap++ {
-		repeated.Segments = append(repeated.Segments, track.Segments...)
-	}
-	return repeated
-}
-
-func buildTelemetryProfiles(
-	track Track,
-	wraparound bool,
-	stepM float64,
-	gmax float64,
-	cruiseCap float64,
-	maxBrakeMPS2 float64,
-	vMin float64,
-	m float64,
-	g float64,
-	Crr float64,
-	rho float64,
-	Cd float64,
-	A float64,
-	theta float64,
-) (profileSet, error) {
-	samples := sampleTrackMeters(track, stepM, g, gmax)
-	if !wraparound || len(samples) == 0 {
-		return buildProfiles(samples, cruiseCap, maxBrakeMPS2, vMin, m, g, Crr, rho, Cd, A, theta), nil
-	}
-
-	wrappedTrack := repeatTrack(track, telemetryWrapProfileLaps)
-	wrappedSamples := sampleTrackMeters(wrappedTrack, stepM, g, gmax)
-	wrappedProfiles := buildProfiles(wrappedSamples, cruiseCap, maxBrakeMPS2, vMin, m, g, Crr, rho, Cd, A, theta)
-
-	oneLapCount := len(samples)
-	start := oneLapCount
-	end := 2 * oneLapCount
-	if telemetryWrapProfileLaps < 3 || end > len(wrappedProfiles.Base) || end > len(wrappedProfiles.Brake) || end > len(wrappedProfiles.Coast) {
-		return profileSet{}, fmt.Errorf("failed to build wraparound telemetry profiles")
-	}
-
-	return profileSet{
-		Base:  append(speedProfile(nil), wrappedProfiles.Base[start:end]...),
-		Brake: append(speedProfile(nil), wrappedProfiles.Brake[start:end]...),
-		Coast: append(speedProfile(nil), wrappedProfiles.Coast[start:end]...),
-	}, nil
-}
-
-func validateTelemetryStartSpeed(startSpeed float64) (float64, error) {
+// if invalid, negative, NaN, or infinite -> falls back to 0.5
+func sanitizeTelemetryStartSpeed(startSpeed float64) float64 {
 	if math.IsNaN(startSpeed) || math.IsInf(startSpeed, 0) || startSpeed < 0 {
-		return 0, fmt.Errorf("invalid telemetry start speed: %v", startSpeed)
+		return defaultTelemetryStartSpeed
 	}
-	return startSpeed, nil
+	return startSpeed
 }
 
-func telemetryTerminalSpeed(points []telemetryPoint) (float64, error) {
+// takes ending speed from previous lap
+// falls back to default if empty
+func telemetryTerminalSpeed(points []telemetryPoint) float64 {
 	if len(points) == 0 {
-		return 0, fmt.Errorf("telemetry lap produced no points")
+		return defaultTelemetryStartSpeed
 	}
-	return validateTelemetryStartSpeed(points[len(points)-1].Speed)
+	return sanitizeTelemetryStartSpeed(points[len(points)-1].Speed)
 }
+
 
 // warmTelemetryStartSpeed repeatedly runs one-lap simulations and carries each
 // lap's terminal speed into the next lap's start until the start/end speed
 // difference is small or the iteration cap is reached.
+
+// starts from initial speed and takes previous lap's ending speed 
+// uses it as next lap's start speed
+// repeats until the start/end speed difference is small or the iteration cap is reached
 func warmTelemetryStartSpeed(
 	segments []trackSegment,
 	initialStartSpeed float64,
 	maxLaps int,
 	tolerance float64,
-) (float64, error) {
-	startSpeed, err := validateTelemetryStartSpeed(initialStartSpeed)
-	if err != nil {
-		return 0, err
-	}
+) float64 {
+	startSpeed := sanitizeTelemetryStartSpeed(initialStartSpeed)
 	if maxLaps <= 0 {
-		return startSpeed, nil
+		return startSpeed
 	}
 	if tolerance < 0 || math.IsNaN(tolerance) || math.IsInf(tolerance, 0) {
 		tolerance = telemetryWarmupTolerance
 	}
 
 	for lap := 0; lap < maxLaps; lap++ {
-		points, err := buildTelemetryOneLap(segments, startSpeed)
-		if err != nil {
-			return 0, err
-		}
-		nextStartSpeed, err := telemetryTerminalSpeed(points)
-		if err != nil {
-			return 0, err
-		}
+		points := buildTelemetryOneLap(segments, startSpeed)
+		nextStartSpeed := telemetryTerminalSpeed(points)
 		if math.Abs(nextStartSpeed-startSpeed) <= tolerance {
-			return nextStartSpeed, nil
+			return nextStartSpeed
 		}
 		startSpeed = nextStartSpeed
 	}
 
-	return startSpeed, nil
+	return startSpeed
 }
 
 // calculates accel at a given v
