@@ -126,6 +126,27 @@ button:hover {
   font-size: 14px;
 }
 
+.track-controls {
+  margin-bottom: 14px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.toggle-label input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+}
+
 .result strong {
   color: var(--accent);
   font-size: 22px;
@@ -141,6 +162,13 @@ button:hover {
 
 .track-layer path {
   transition: stroke 160ms ease;
+}
+
+.track-start-label {
+  fill: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
 }
 
 .track-meta {

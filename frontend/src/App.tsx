@@ -144,6 +144,12 @@ const ABS_SPEED_LEGEND_GRADIENT = `linear-gradient(90deg, ${ABS_SPEED_COLOR_STOP
   return `${rgbToCss(stop.color)} ${offset.toFixed(1)}%`
 }).join(', ')})`
 
+function telemetryUrl(wraparoundEnabled: boolean): string {
+  const url = new URL('http://localhost:8080/track/telemetry')
+  url.searchParams.set('wraparound', String(wraparoundEnabled))
+  return url.toString()
+}
+
 function App() {
   //fields --> current val
   //setFields -->func to change val
@@ -154,7 +160,8 @@ function App() {
   const [status, setStatus] = useState('')
   const [trackStatus, setTrackStatus] = useState('Loading track...')
   const [telemetry, setTelemetry] = useState<TelemetryPoint[]>([])
-  const [trackWidth, setTrackWidth] = useState(30)
+  const trackWidth = 30
+  const [wraparoundEnabled, setWraparoundEnabled] = useState(true)
   const [hoverPoint, setHoverPoint] = useState<HoverPoint | null>(null)
 
   const [tooltip, setTooltip] = useState<TooltipState>({
@@ -219,6 +226,10 @@ function App() {
     }
   }, [telemetry])
 
+  const startPoint = telemetry.length > 0 ? telemetry[0] : null
+  const endPoint = telemetry.length > 0 ? telemetry[telemetry.length - 1] : null
+  const startMarkerColor = startPoint ? speedToColor(startPoint.speed) : rgbToCss(ABS_SPEED_COLOR_STOPS[0].color)
+
   //run code when react renders
   //code runs when data from backend is fetched
   //when state changes react call App func again
@@ -230,15 +241,17 @@ function App() {
     async function loadTelemetry() {
       try {
         //pause async func w/o freezing UI until backend response
-        const response = await fetch('http://localhost:8080/track/telemetry')
+        const response = await fetch(telemetryUrl(wraparoundEnabled))
         const data = await response.json()
         if (!response.ok || !Array.isArray(data.points)) {
-          if (isMounted) setTrackStatus('Failed to load track telemetry.')
+          if (isMounted) setTrackStatus(data.message || 'Failed to load track telemetry.')
           return
         }
         if (isMounted) {
           setTelemetry(data.points)
-          setTrackStatus(`Telemetry points: ${data.points.length}`)
+          setTrackStatus(
+            `Telemetry points: ${data.points.length} · Wraparound ${wraparoundEnabled ? 'on' : 'off'}`,
+          )
         }
       } catch {
         if (isMounted) setTrackStatus('Unable to reach backend for track telemetry.')
@@ -251,7 +264,7 @@ function App() {
     return () => {
       isMounted = false
     }
-  }, [])
+  }, [wraparoundEnabled])
 
   const handleInputChange = (name: string, value: string) => {
     setFields((prev) => prev.map((field) => (field.name === name ? { ...field, value } : field)))
@@ -354,6 +367,16 @@ function App() {
 
       <section className="panel">
         <h2>Track Preview</h2>
+        <div className="track-controls">
+          <label className="toggle-label">
+            <input
+              type="checkbox"
+              checked={wraparoundEnabled}
+              onChange={(event) => setWraparoundEnabled(event.target.checked)}
+            />
+            <span>Wraparound continuation</span>
+          </label>
+        </div>
         <svg className="track-frame" viewBox={viewBox} role="img" aria-label="Track visualization">
           <g className="track-layer">
             {segments.map((seg) => (
@@ -383,6 +406,37 @@ function App() {
                 pointerEvents="none"
               />
             ) : null}
+            {startPoint ? (
+              <>
+                <circle
+                  className="track-start-marker"
+                  cx={startPoint.x}
+                  cy={startPoint.y}
+                  r={10}
+                  fill="#fffdf8"
+                  stroke={startMarkerColor}
+                  strokeWidth={4}
+                  pointerEvents="none"
+                />
+                <circle
+                  className="track-start-marker"
+                  cx={startPoint.x}
+                  cy={startPoint.y}
+                  r={3.5}
+                  fill={startMarkerColor}
+                  pointerEvents="none"
+                />
+                <text
+                  className="track-start-label"
+                  x={startPoint.x}
+                  y={startPoint.y - 16}
+                  textAnchor="middle"
+                  pointerEvents="none"
+                >
+                  S/F
+                </text>
+              </>
+            ) : null}
           </g>
         </svg>
         <div className="speed-legend" aria-label="Absolute speed legend">
@@ -400,6 +454,11 @@ function App() {
         <div className="track-meta">
           {trackStatus} · Speed range {speedRange[0].toFixed(2)}–{speedRange[1].toFixed(2)} m/s
         </div>
+        {startPoint && endPoint ? (
+          <div className="track-meta">
+            Start speed {startPoint.speed.toFixed(2)} m/s · End speed {endPoint.speed.toFixed(2)} m/s
+          </div>
+        ) : null}
         <div style={{ marginTop: 12 }}>
           <TelemetryGraph telemetry={telemetry} />
         </div>
