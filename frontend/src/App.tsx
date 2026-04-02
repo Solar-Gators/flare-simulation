@@ -60,7 +60,14 @@ const initialFields: FieldDef[] = [
   { name: 'cD', label: 'cD', step: '0.01', value: '0.21' },
   { name: 'a', label: 'a (m^2)', step: '0.001', value: '0.456' },
   { name: 'theta', label: 'theta (rad)', step: '0.001', value: '0' },
-  { name: 'gmax', label: 'gmax (lateral g limit)', step: '0.01', value: '1.00', min: '0.1', max: '2.0' },
+  {
+    name: 'gmax',
+    label: 'gmax (lateral g limit)',
+    step: '0.01',
+    value: '1.00',
+    min: '0.1',
+    max: '2.0',
+  },
 ]
 
 const ABS_COLOR_MIN_SPEED = 0.0
@@ -98,8 +105,18 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 // independent fields (outside the expandable inputs)
-const initialRaceDayMin: FieldDef = { name: 'raceDayMin', label: 'raceDayMin', step: '1', value: '480' }
-const initialBatteryWh: FieldDef = { name: 'batteryWh', label: 'batteryWh', step: '1', value: '5000' }
+const initialRaceDayMin: FieldDef = {
+  name: 'raceDayMin',
+  label: 'raceDayMin',
+  step: '1',
+  value: '480',
+}
+const initialBatteryWh: FieldDef = {
+  name: 'batteryWh',
+  label: 'batteryWh',
+  step: '1',
+  value: '5000',
+}
 
 type VehiclePreset = {
   id: string
@@ -109,7 +126,12 @@ type VehiclePreset = {
 }
 
 const VEHICLE_PRESETS: VehiclePreset[] = [
-  { id: 'flare-default', label: 'Flare (default)', fields: initialFields, outside: { batteryWh: '5000', raceDayMin: '480' } },
+  {
+    id: 'flare-default',
+    label: 'Flare (default)',
+    fields: initialFields,
+    outside: { batteryWh: '5000', raceDayMin: '480' },
+  },
   {
     id: 'lexus-gs350-awd',
     label: '2008 Lexus GS350 AWD (215/55R17 road tires)',
@@ -170,7 +192,9 @@ function speedToColor(speed: number): string {
     const next = ABS_SPEED_COLOR_STOPS[index]
     if (clampedSpeed <= next.speed) {
       const t = (clampedSpeed - prev.speed) / Math.max(1e-6, next.speed - prev.speed)
-      const color = prev.color.map((channel, channelIndex) => mixChannel(channel, next.color[channelIndex], t))
+      const color = prev.color.map((channel, channelIndex) =>
+        mixChannel(channel, next.color[channelIndex], t),
+      )
       return rgbToCss(color)
     }
   }
@@ -180,17 +204,25 @@ function speedToColor(speed: number): string {
 
 const ABS_SPEED_LEGEND_GRADIENT = `linear-gradient(90deg, ${ABS_SPEED_COLOR_STOPS.map((stop) => {
   const offset =
-    ((stop.speed - ABS_COLOR_MIN_SPEED) / Math.max(1e-6, ABS_COLOR_MAX_SPEED - ABS_COLOR_MIN_SPEED)) * 100
+    ((stop.speed - ABS_COLOR_MIN_SPEED) /
+      Math.max(1e-6, ABS_COLOR_MAX_SPEED - ABS_COLOR_MIN_SPEED)) *
+    100
   return `${rgbToCss(stop.color)} ${offset.toFixed(1)}%`
 }).join(', ')})`
 
-type VehicleTelemetryResponse = { points: TelemetryPoint[] }
+function telemetryUrl(wraparoundEnabled: boolean): string {
+  const url = new URL('http://localhost:8080/track/telemetry')
+  url.searchParams.set('wraparound', String(wraparoundEnabled))
+  return url.toString()
+}
 
 function App() {
   const [selectedPresetId, setSelectedPresetId] = useState<string>(VEHICLE_PRESETS[0].id)
   const [inputsOpen, setInputsOpen] = useState<boolean>(false)
 
-  const [fields, setFields] = useState<FieldDef[]>(() => VEHICLE_PRESETS[0].fields.map((f) => ({ ...f })))
+  const [fields, setFields] = useState<FieldDef[]>(() =>
+    VEHICLE_PRESETS[0].fields.map((f) => ({ ...f })),
+  )
 
   const [raceDayMin, setRaceDayMin] = useState<FieldDef>(() => ({ ...initialRaceDayMin }))
   const [batteryWh, setBatteryWh] = useState<FieldDef>(() => ({ ...initialBatteryWh }))
@@ -199,7 +231,8 @@ function App() {
   const [status, setStatus] = useState('')
   const [trackStatus, setTrackStatus] = useState('Loading track...')
   const [telemetry, setTelemetry] = useState<TelemetryPoint[]>([])
-  const [trackWidth] = useState(30)
+  const trackWidth = 30
+  const [wraparoundEnabled, setWraparoundEnabled] = useState(true)
   const [hoverPoint, setHoverPoint] = useState<HoverPoint | null>(null)
 
   const [tooltip, setTooltip] = useState<TooltipState>({
@@ -251,7 +284,12 @@ function App() {
     const width = Math.max(1, maxX - minX)
     const height = Math.max(1, maxY - minY)
 
-    const nextViewBox = [minX - padding, minY - padding, width + padding * 2, height + padding * 2].join(' ')
+    const nextViewBox = [
+      minX - padding,
+      minY - padding,
+      width + padding * 2,
+      height + padding * 2,
+    ].join(' ')
 
     const nextSegments: TrackSegment[] = telemetry.slice(1).map((point, index) => {
       const prev = telemetry[index]
@@ -274,22 +312,31 @@ function App() {
     }
   }, [telemetry])
 
+  const startPoint = telemetry.length > 0 ? telemetry[0] : null
+  const endPoint = telemetry.length > 0 ? telemetry[telemetry.length - 1] : null
+  const startMarkerColor = startPoint
+    ? speedToColor(startPoint.speed)
+    : rgbToCss(ABS_SPEED_COLOR_STOPS[0].color)
+
   useEffect(() => {
     let isMounted = true
 
     async function loadTelemetry() {
       try {
-        const response = await fetch('http://localhost:8080/track/telemetry')
-        const data = (await response.json()) as VehicleTelemetryResponse
+        //pause async func w/o freezing UI until backend response
+        const response = await fetch(telemetryUrl(wraparoundEnabled))
+        const data = await response.json()
 
         if (!response.ok || !Array.isArray(data.points)) {
-          if (isMounted) setTrackStatus('Failed to load track telemetry.')
+          if (isMounted) setTrackStatus(data.message || 'Failed to load track telemetry.')
           return
         }
 
         if (isMounted) {
           setTelemetry(data.points)
-          setTrackStatus(`Telemetry points: ${data.points.length}`)
+          setTrackStatus(
+            `Telemetry points: ${data.points.length} · Wraparound ${wraparoundEnabled ? 'on' : 'off'}`,
+          )
         }
       } catch {
         if (isMounted) setTrackStatus('Unable to reach backend for track telemetry.')
@@ -300,7 +347,7 @@ function App() {
     return () => {
       isMounted = false
     }
-  }, [])
+  }, [wraparoundEnabled])
 
   const handleInputChange = (name: string, value: string) => {
     setFields((prev) => prev.map((field) => (field.name === name ? { ...field, value } : field)))
@@ -392,7 +439,11 @@ function App() {
         <div className="preset-row">
           <label>
             Vehicle preset
-            <select value={selectedPresetId} onChange={(e) => applyPreset(e.target.value)} aria-label="Select vehicle preset">
+            <select
+              value={selectedPresetId}
+              onChange={(e) => applyPreset(e.target.value)}
+              aria-label="Select vehicle preset"
+            >
               {VEHICLE_PRESETS.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.label}
@@ -430,7 +481,9 @@ function App() {
               step={raceDayMin.step}
               name={raceDayMin.name}
               value={raceDayMin.value}
-              onChange={(event) => setRaceDayMin((prev) => ({ ...prev, value: event.target.value }))}
+              onChange={(event) =>
+                setRaceDayMin((prev) => ({ ...prev, value: event.target.value }))
+              }
             />
           </label>
         </div>
@@ -469,6 +522,16 @@ function App() {
 
       <section className="panel">
         <h2>Track Preview</h2>
+        <div className="track-controls">
+          <label className="toggle-label">
+            <input
+              type="checkbox"
+              checked={wraparoundEnabled}
+              onChange={(event) => setWraparoundEnabled(event.target.checked)}
+            />
+            <span>Wraparound continuation</span>
+          </label>
+        </div>
         <svg className="track-frame" viewBox={viewBox} role="img" aria-label="Track visualization">
           <g className="track-layer">
             {segments.map((seg) => (
@@ -480,7 +543,9 @@ function App() {
                 strokeWidth={trackWidth}
                 strokeLinecap="round"
                 pointerEvents="stroke"
-                onMouseMove={(e) => handleSegmentMove(e, seg.speed, seg.accel, seg.distance, seg.x, seg.y, seg.color)}
+                onMouseMove={(e) =>
+                  handleSegmentMove(e, seg.speed, seg.accel, seg.distance, seg.x, seg.y, seg.color)
+                }
                 onMouseLeave={handleSegmentLeave}
               />
             ))}
@@ -496,12 +561,46 @@ function App() {
                 pointerEvents="none"
               />
             ) : null}
+            {startPoint ? (
+              <>
+                <circle
+                  className="track-start-marker"
+                  cx={startPoint.x}
+                  cy={startPoint.y}
+                  r={10}
+                  fill="#fffdf8"
+                  stroke={startMarkerColor}
+                  strokeWidth={4}
+                  pointerEvents="none"
+                />
+                <circle
+                  className="track-start-marker"
+                  cx={startPoint.x}
+                  cy={startPoint.y}
+                  r={3.5}
+                  fill={startMarkerColor}
+                  pointerEvents="none"
+                />
+                <text
+                  className="track-start-label"
+                  x={startPoint.x}
+                  y={startPoint.y - 16}
+                  textAnchor="middle"
+                  pointerEvents="none"
+                >
+                  S/F
+                </text>
+              </>
+            ) : null}
           </g>
         </svg>
 
         <div className="speed-legend" aria-label="Absolute speed legend">
           <div className="speed-legend-title">Absolute speed color scale</div>
-          <div className="speed-legend-bar" style={{ backgroundImage: ABS_SPEED_LEGEND_GRADIENT }} />
+          <div
+            className="speed-legend-bar"
+            style={{ backgroundImage: ABS_SPEED_LEGEND_GRADIENT }}
+          />
           <div className="speed-legend-scale">
             {ABS_COLOR_TICKS.map((tick) => (
               <span key={tick}>{tick.toFixed(0)} m/s</span>
@@ -512,13 +611,21 @@ function App() {
         <div className="track-meta">
           {trackStatus} · Speed range {speedRange[0].toFixed(2)}–{speedRange[1].toFixed(2)} m/s
         </div>
-
+        {startPoint && endPoint ? (
+          <div className="track-meta">
+            Start speed {startPoint.speed.toFixed(2)} m/s · End speed {endPoint.speed.toFixed(2)}{' '}
+            m/s
+          </div>
+        ) : null}
         <div style={{ marginTop: 12 }}>
           <TelemetryGraph telemetry={telemetry} />
         </div>
       </section>
 
-      <div className={`tooltip ${tooltip.visible ? 'visible' : ''}`} style={{ left: tooltip.x, top: tooltip.y }}>
+      <div
+        className={`tooltip ${tooltip.visible ? 'visible' : ''}`}
+        style={{ left: tooltip.x, top: tooltip.y }}
+      >
         <div>
           Speed: <strong>{tooltip.speed.toFixed(2)}</strong> m/s
         </div>
