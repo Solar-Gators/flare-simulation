@@ -48,19 +48,26 @@ type FieldDef = {
 
 // input fields for distance calculator (no solarWhPerMin, no raceDayMin, no batteryWh here)
 const initialFields: FieldDef[] = [
-  { name: 'v', label: 'v (m/s)', step: '0.1', value: '20' },
-  { name: 'etaDrive', label: 'etaDrive', step: '0.01', value: '0.9' },
-  { name: 'rWheel', label: 'rWheel (m)', step: '0.0001', value: '0.2792' },
-  { name: 'tMax', label: 'tMax (N·m)', step: '0.1', value: '45' },
-  { name: 'pMax', label: 'pMax (W)', step: '1', value: '10000' },
-  { name: 'm', label: 'm (kg)', step: '0.1', value: '285' },
-  { name: 'g', label: 'g (m/s^2)', step: '0.01', value: '9.81' },
-  { name: 'cRr', label: 'cRr', step: '0.0001', value: '0.0015' },
+  { name: 'v', label: 'Baseline Velocity (m/s)', step: '0.1', value: '20' },
+  { name: 'etaDrive', label: 'Drivetrain Efficiency (%)', step: '0.01', value: '0.9' },
+  { name: 'rWheel', label: 'Wheel Radius (m)', step: '0.0001', value: '0.2792' },
+  { name: 'tMax', label: 'Max Motor Torque (N·m)', step: '0.1', value: '45' },
+  { name: 'pMax', label: 'Max Motor Power (W)', step: '1', value: '10000' },
+  { name: 'm', label: 'Mass (kg)', step: '0.1', value: '285' },
+  { name: 'g', label: 'Gravity (m/s^2)', step: '0.01', value: '9.81' },
+  { name: 'cRr', label: 'Rolling Resistance Coefficient', step: '0.0001', value: '0.0015' },
   { name: 'rho', label: 'rho', step: '0.001', value: '1.225' },
-  { name: 'cD', label: 'cD', step: '0.01', value: '0.21' },
-  { name: 'a', label: 'a (m^2)', step: '0.001', value: '0.456' },
-  { name: 'theta', label: 'theta (rad)', step: '0.001', value: '0' },
-  { name: 'gmax', label: 'gmax (lateral g limit)', step: '0.01', value: '1.00', min: '0.1', max: '2.0' },
+  { name: 'cD', label: 'Drag Coefficient', step: '0.01', value: '0.21' },
+  { name: 'a', label: 'Frontal Area (m^2)', step: '0.001', value: '0.456' },
+  { name: 'theta', label: 'Track Grade (rad)', step: '0.001', value: '0' },
+  {
+    name: 'gmax',
+    label: 'Lateral G-force Limit',
+    step: '0.01',
+    value: '1.00',
+    min: '0.1',
+    max: '2.0',
+  },
 ]
 
 const ABS_COLOR_MIN_SPEED = 0.0
@@ -98,8 +105,26 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 // independent fields (outside the expandable inputs)
-const initialRaceDayMin: FieldDef = { name: 'raceDayMin', label: 'raceDayMin', step: '1', value: '480' }
-const initialBatteryWh: FieldDef = { name: 'batteryWh', label: 'batteryWh', step: '1', value: '5000' }
+const initialRaceDayMin: FieldDef = {
+  name: 'raceDayMin',
+  label: 'Race Day Time (min)',
+  step: '1',
+  value: '480',
+}
+const initialBatteryWh: FieldDef = {
+  name: 'batteryWh',
+  label: 'Battery Power (Wh)',
+  step: '1',
+  value: '5000',
+}
+const initialAdditionalEfficiency: FieldDef = {
+  name: 'efficiency',
+  label: 'Additional Efficiency (%)',
+  step: '1',
+  value: '0.00',
+  min: '-100.00',
+  max: '100.00',
+}
 
 type VehiclePreset = {
   id: string
@@ -109,7 +134,12 @@ type VehiclePreset = {
 }
 
 const VEHICLE_PRESETS: VehiclePreset[] = [
-  { id: 'flare-default', label: 'Flare (default)', fields: initialFields, outside: { batteryWh: '5000', raceDayMin: '480' } },
+  {
+    id: 'flare-default',
+    label: 'Flare (default)',
+    fields: initialFields,
+    outside: { batteryWh: '5000', raceDayMin: '480' },
+  },
   {
     id: 'lexus-gs350-awd',
     label: '2008 Lexus GS350 AWD (215/55R17 road tires)',
@@ -170,7 +200,9 @@ function speedToColor(speed: number): string {
     const next = ABS_SPEED_COLOR_STOPS[index]
     if (clampedSpeed <= next.speed) {
       const t = (clampedSpeed - prev.speed) / Math.max(1e-6, next.speed - prev.speed)
-      const color = prev.color.map((channel, channelIndex) => mixChannel(channel, next.color[channelIndex], t))
+      const color = prev.color.map((channel, channelIndex) =>
+        mixChannel(channel, next.color[channelIndex], t),
+      )
       return rgbToCss(color)
     }
   }
@@ -180,7 +212,9 @@ function speedToColor(speed: number): string {
 
 const ABS_SPEED_LEGEND_GRADIENT = `linear-gradient(90deg, ${ABS_SPEED_COLOR_STOPS.map((stop) => {
   const offset =
-    ((stop.speed - ABS_COLOR_MIN_SPEED) / Math.max(1e-6, ABS_COLOR_MAX_SPEED - ABS_COLOR_MIN_SPEED)) * 100
+    ((stop.speed - ABS_COLOR_MIN_SPEED) /
+      Math.max(1e-6, ABS_COLOR_MAX_SPEED - ABS_COLOR_MIN_SPEED)) *
+    100
   return `${rgbToCss(stop.color)} ${offset.toFixed(1)}%`
 }).join(', ')})`
 
@@ -190,10 +224,15 @@ function App() {
   const [selectedPresetId, setSelectedPresetId] = useState<string>(VEHICLE_PRESETS[0].id)
   const [inputsOpen, setInputsOpen] = useState<boolean>(false)
 
-  const [fields, setFields] = useState<FieldDef[]>(() => VEHICLE_PRESETS[0].fields.map((f) => ({ ...f })))
+  const [fields, setFields] = useState<FieldDef[]>(() =>
+    VEHICLE_PRESETS[0].fields.map((f) => ({ ...f })),
+  )
 
   const [raceDayMin, setRaceDayMin] = useState<FieldDef>(() => ({ ...initialRaceDayMin }))
   const [batteryWh, setBatteryWh] = useState<FieldDef>(() => ({ ...initialBatteryWh }))
+  const [additionalEfficiency, setAdditionalEfficiency] = useState<FieldDef>(() => ({
+    ...initialAdditionalEfficiency,
+  }))
 
   const [result, setResult] = useState('--')
   const [status, setStatus] = useState('')
@@ -251,7 +290,12 @@ function App() {
     const width = Math.max(1, maxX - minX)
     const height = Math.max(1, maxY - minY)
 
-    const nextViewBox = [minX - padding, minY - padding, width + padding * 2, height + padding * 2].join(' ')
+    const nextViewBox = [
+      minX - padding,
+      minY - padding,
+      width + padding * 2,
+      height + padding * 2,
+    ].join(' ')
 
     const nextSegments: TrackSegment[] = telemetry.slice(1).map((point, index) => {
       const prev = telemetry[index]
@@ -336,6 +380,13 @@ function App() {
     }
     payload[batteryWh.name] = batteryValue
 
+    const effValue = toNumber(additionalEfficiency.value)
+    if (effValue === null || effValue < -100 || effValue > 100) {
+      setStatus(`Invalid value for ${additionalEfficiency.label}. Must be between -100 and 100.`)
+      return
+    }
+    payload[additionalEfficiency.name] = effValue
+
     try {
       const response = await fetch('http://localhost:8080/distance', {
         method: 'POST',
@@ -392,7 +443,11 @@ function App() {
         <div className="preset-row">
           <label>
             Vehicle preset
-            <select value={selectedPresetId} onChange={(e) => applyPreset(e.target.value)} aria-label="Select vehicle preset">
+            <select
+              value={selectedPresetId}
+              onChange={(e) => applyPreset(e.target.value)}
+              aria-label="Select vehicle preset"
+            >
               {VEHICLE_PRESETS.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.label}
@@ -430,7 +485,24 @@ function App() {
               step={raceDayMin.step}
               name={raceDayMin.name}
               value={raceDayMin.value}
-              onChange={(event) => setRaceDayMin((prev) => ({ ...prev, value: event.target.value }))}
+              onChange={(event) =>
+                setRaceDayMin((prev) => ({ ...prev, value: event.target.value }))
+              }
+            />
+          </label>
+
+          <label>
+            {additionalEfficiency.label}
+            <input
+              type="number"
+              step={additionalEfficiency.step}
+              min={additionalEfficiency.min}
+              max={additionalEfficiency.max}
+              name={additionalEfficiency.name}
+              value={additionalEfficiency.value}
+              onChange={(event) =>
+                setAdditionalEfficiency((prev) => ({ ...prev, value: event.target.value }))
+              }
             />
           </label>
         </div>
@@ -480,7 +552,9 @@ function App() {
                 strokeWidth={trackWidth}
                 strokeLinecap="round"
                 pointerEvents="stroke"
-                onMouseMove={(e) => handleSegmentMove(e, seg.speed, seg.accel, seg.distance, seg.x, seg.y, seg.color)}
+                onMouseMove={(e) =>
+                  handleSegmentMove(e, seg.speed, seg.accel, seg.distance, seg.x, seg.y, seg.color)
+                }
                 onMouseLeave={handleSegmentLeave}
               />
             ))}
@@ -501,7 +575,10 @@ function App() {
 
         <div className="speed-legend" aria-label="Absolute speed legend">
           <div className="speed-legend-title">Absolute speed color scale</div>
-          <div className="speed-legend-bar" style={{ backgroundImage: ABS_SPEED_LEGEND_GRADIENT }} />
+          <div
+            className="speed-legend-bar"
+            style={{ backgroundImage: ABS_SPEED_LEGEND_GRADIENT }}
+          />
           <div className="speed-legend-scale">
             {ABS_COLOR_TICKS.map((tick) => (
               <span key={tick}>{tick.toFixed(0)} m/s</span>
@@ -518,7 +595,10 @@ function App() {
         </div>
       </section>
 
-      <div className={`tooltip ${tooltip.visible ? 'visible' : ''}`} style={{ left: tooltip.x, top: tooltip.y }}>
+      <div
+        className={`tooltip ${tooltip.visible ? 'visible' : ''}`}
+        style={{ left: tooltip.x, top: tooltip.y }}
+      >
         <div>
           Speed: <strong>{tooltip.speed.toFixed(2)}</strong> m/s
         </div>

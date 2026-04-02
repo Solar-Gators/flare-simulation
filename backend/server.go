@@ -36,6 +36,7 @@ type distanceRequest struct {
 	Cd            float64 `json:"cD"`
 	A             float64 `json:"a"`
 	Theta         float64 `json:"theta"`
+	AdditionalEfficiency    float64 `json:"additionalEfficiency"`
 }
 
 type distanceResponse struct {
@@ -133,7 +134,7 @@ func distanceHandler(w http.ResponseWriter, r *http.Request) {
 		req.V,
 		req.BatteryWh, req.SolarWhPerMin, req.EtaDrive, req.RaceDayMin,
 		req.RWheel, req.Tmax, req.Pmax,
-		req.M, req.G, req.Crr, req.Rho, req.Cd, req.A, req.Theta,
+		req.M, req.G, req.Crr, req.Rho, req.Cd, req.A, req.Theta, req.AdditionalEfficiency,
 	)
 	if !ok {
 		writeJSON(w, http.StatusBadRequest, distanceResponse{OK: false, Message: "inputs are not feasible for the model"})
@@ -319,6 +320,7 @@ func buildTelemetry(segments []trackSegment) []telemetryPoint {
 		Tmax     = 45.0
 		Pmax     = 10000.0
 		etaDrive = 0.90
+		additionalEfficiency = 0.00
 	)
 
 	track := Track{Segments: make([]Segment, 0, len(segments))}
@@ -335,7 +337,7 @@ func buildTelemetry(segments []trackSegment) []telemetryPoint {
 	if cruiseCap <= 0 {
 		cruiseCap = maxSpeed
 	}
-	profiles := buildProfiles(samples, cruiseCap, 0.95*g, vMin, m, g, Crr, rho, Cd, A, theta)
+	profiles := buildProfiles(samples, cruiseCap, 0.95*g, vMin, m, g, Crr, rho, Cd, A, theta, additionalEfficiency)
 
 	points := make([]telemetryPoint, 0, 64)
 	x, y, heading := 0.0, 0.0, 0.0
@@ -365,10 +367,10 @@ func buildTelemetry(segments []trackSegment) []telemetryPoint {
 					aReq := (brakeSpeed*brakeSpeed - v*v) / (2 * ds)
 					a = math.Max(aReq, -aLongMax)
 				} else if v > coastSpeed {
-					aCoast := coastDecelFromPower(v, vMin, m, g, Crr, rho, Cd, A, theta)
+					aCoast := coastDecelFromPower(v, vMin, m, g, Crr, rho, Cd, A, theta, additionalEfficiency)
 					a = math.Max(aCoast, -aLongMax)
 				} else {
-					aPower := accelAtSpeed(v, vMin, rWheel, Tmax, Pmax, etaDrive, m, g, Crr, rho, Cd, A, theta)
+					aPower := accelAtSpeed(v, vMin, rWheel, Tmax, Pmax, etaDrive, m, g, Crr, rho, Cd, A, theta, additionalEfficiency)
 					a = math.Min(aPower, aLongMax)
 				}
 				vNext := updateSpeed(v, a, ds)
@@ -445,10 +447,10 @@ func buildTelemetry(segments []trackSegment) []telemetryPoint {
 					aReq := (brakeSpeed*brakeSpeed - v*v) / (2 * ds)
 					a = math.Max(aReq, -aLongMax)
 				} else if v > coastSpeed {
-					aCoast := coastDecelFromPower(v, vMin, m, g, Crr, rho, Cd, A, theta)
+					aCoast := coastDecelFromPower(v, vMin, m, g, Crr, rho, Cd, A, theta, additionalEfficiency)
 					a = math.Max(aCoast, -aLongMax)
 				} else {
-					aPower := accelAtSpeed(v, vMin, rWheel, Tmax, Pmax, etaDrive, m, g, Crr, rho, Cd, A, theta)
+					aPower := accelAtSpeed(v, vMin, rWheel, Tmax, Pmax, etaDrive, m, g, Crr, rho, Cd, A, theta, additionalEfficiency)
 					a = math.Min(aPower, aLongMax)
 				}
 				vNext := updateSpeed(v, a, ds)
@@ -481,6 +483,7 @@ func accelAtSpeed(
 	Cd float64,
 	A float64,
 	theta float64,
+	additionalEfficiency float64,
 ) float64 {
 	vEff := math.Max(v, vMin)
 	pAvail := WheelPowerEV(v, Tmax, Pmax, rWheel, etaDrive)
@@ -488,7 +491,7 @@ func accelAtSpeed(
 	if v < vMin && rWheel > 0 {
 		fDrive = Tmax / rWheel
 	}
-	pRes := PowerRequired(v, m, g, Crr, rho, Cd, A, theta)
+	pRes := PowerRequired(v, m, g, Crr, rho, Cd, A, theta, additionalEfficiency)
 	fRes := pRes / vEff
 	return (fDrive - fRes) / m
 }
@@ -516,9 +519,10 @@ func coastDecel(
 	Cd float64,
 	A float64,
 	theta float64,
+	additionalEfficiency float64,
 ) float64 {
 	vEff := math.Max(v, vMin)
-	pRes := PowerRequired(v, m, g, Crr, rho, Cd, A, theta)
+	pRes := PowerRequired(v, m, g, Crr, rho, Cd, A, theta, additionalEfficiency)
 	fRes := pRes / vEff
 	return -fRes / m
 }
@@ -540,19 +544,20 @@ func computeOptimalSpeed() float64 {
 		solarWhPerMin = 5.0
 		etaDrive      = 0.90
 		raceDayMin    = 480.0
+		additionalEfficiency = 0.0
 	)
 
 	bestV, bestD := 0.0, 0.0
 	for v := 2.0; v <= 40.0; v += 0.5 {
 		if d, ok := DistanceForSpeedEV(v, batteryWh, solarWhPerMin, etaDrive, raceDayMin,
-			rWheel, Tmax, Pmax, m, g, Crr, rho, Cd, A, theta); ok && d > bestD {
+			rWheel, Tmax, Pmax, m, g, Crr, rho, Cd, A, theta, additionalEfficiency); ok && d > bestD {
 			bestD, bestV = d, v
 		}
 	}
 
 	for v := math.Max(0.5, bestV-2.0); v <= bestV+2.0; v += 0.1 {
 		if d, ok := DistanceForSpeedEV(v, batteryWh, solarWhPerMin, etaDrive, raceDayMin,
-			rWheel, Tmax, Pmax, m, g, Crr, rho, Cd, A, theta); ok && d > bestD {
+			rWheel, Tmax, Pmax, m, g, Crr, rho, Cd, A, theta, additionalEfficiency); ok && d > bestD {
 			bestD, bestV = d, v
 		}
 	}
