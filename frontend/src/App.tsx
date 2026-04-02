@@ -46,21 +46,23 @@ type FieldDef = {
   max?: string
 }
 
-// input fields for distance calculator (no solarWhPerMin, no raceDayMin, no batteryWh here)
-const initialFields: FieldDef[] = [
-  { name: 'v', label: 'v (m/s)', step: '0.1', value: '20' },
-  { name: 'etaDrive', label: 'etaDrive', step: '0.01', value: '0.9' },
-  { name: 'rWheel', label: 'rWheel (m)', step: '0.0001', value: '0.2792' },
-  { name: 'tMax', label: 'tMax (N·m)', step: '0.1', value: '45' },
-  { name: 'pMax', label: 'pMax (W)', step: '1', value: '10000' },
-  { name: 'm', label: 'm (kg)', step: '0.1', value: '285' },
-  { name: 'g', label: 'g (m/s^2)', step: '0.01', value: '9.81' },
-  { name: 'cRr', label: 'cRr', step: '0.0001', value: '0.0015' },
-  { name: 'rho', label: 'rho', step: '0.001', value: '1.225' },
-  { name: 'cD', label: 'cD', step: '0.01', value: '0.21' },
-  { name: 'a', label: 'a (m^2)', step: '0.001', value: '0.456' },
-  { name: 'theta', label: 'theta (rad)', step: '0.001', value: '0' },
-  { name: 'gmax', label: 'gmax (lateral g limit)', step: '0.01', value: '1.00', min: '0.1', max: '2.0' },
+type FieldTemplate = Omit<FieldDef, 'value'>
+
+// UI field definitions live here, but the numeric defaults now live only in the backend.
+const fieldTemplates: FieldTemplate[] = [
+  { name: 'v', label: 'v (m/s)', step: '0.1' },
+  { name: 'etaDrive', label: 'etaDrive', step: '0.01' },
+  { name: 'rWheel', label: 'rWheel (m)', step: '0.0001' },
+  { name: 'tMax', label: 'tMax (N·m)', step: '0.1' },
+  { name: 'pMax', label: 'pMax (W)', step: '1' },
+  { name: 'm', label: 'm (kg)', step: '0.1' },
+  { name: 'g', label: 'g (m/s^2)', step: '0.01' },
+  { name: 'cRr', label: 'cRr', step: '0.0001' },
+  { name: 'rho', label: 'rho', step: '0.001' },
+  { name: 'cD', label: 'cD', step: '0.01' },
+  { name: 'a', label: 'a (m^2)', step: '0.001' },
+  { name: 'theta', label: 'theta (rad)', step: '0.001' },
+  { name: 'gmax', label: 'gmax (lateral g limit)', step: '0.01', min: '0.1', max: '2.0' },
 ]
 
 const ABS_COLOR_MIN_SPEED = 0.0
@@ -97,57 +99,16 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
 }
 
-// independent fields (outside the expandable inputs)
-const initialRaceDayMin: FieldDef = { name: 'raceDayMin', label: 'raceDayMin', step: '1', value: '480' }
-const initialBatteryWh: FieldDef = { name: 'batteryWh', label: 'batteryWh', step: '1', value: '5000' }
+const raceDayMinTemplate: FieldTemplate = { name: 'raceDayMin', label: 'raceDayMin', step: '1' }
+const batteryWhTemplate: FieldTemplate = { name: 'batteryWh', label: 'batteryWh', step: '1' }
 
-type VehiclePreset = {
-  id: string
-  label: string
-  fields: FieldDef[]
-  outside?: Partial<Record<'batteryWh' | 'raceDayMin', string>>
+function createBlankField(field: FieldTemplate): FieldDef {
+  return { ...field, value: '' }
 }
 
-const VEHICLE_PRESETS: VehiclePreset[] = [
-  { id: 'flare-default', label: 'Flare (default)', fields: initialFields, outside: { batteryWh: '5000', raceDayMin: '480' } },
-  {
-    id: 'lexus-gs350-awd',
-    label: '2008 Lexus GS350 AWD (215/55R17 road tires)',
-    outside: { batteryWh: '656000', raceDayMin: '480' },
-    fields: initialFields.map((f) => {
-      switch (f.name) {
-        case 'v':
-          return { ...f, value: '20' }
-        case 'etaDrive':
-          return { ...f, value: '0.22' }
-        case 'rWheel':
-          return { ...f, value: '0.334' }
-        case 'tMax':
-          return { ...f, value: '5725' }
-        case 'pMax':
-          return { ...f, value: '880000' }
-        case 'm':
-          return { ...f, value: '1840' }
-        case 'g':
-          return { ...f, value: '9.81' }
-        case 'cRr':
-          return { ...f, value: '0.010' }
-        case 'rho':
-          return { ...f, value: '1.225' }
-        case 'cD':
-          return { ...f, value: '0.27' }
-        case 'a':
-          return { ...f, value: '2.2' }
-        case 'theta':
-          return { ...f, value: '0' }
-        case 'gmax':
-          return { ...f, value: '0.88', min: f.min ?? '0.1', max: f.max ?? '2.0' }
-        default:
-          return f
-      }
-    }),
-  },
-]
+function createBlankFields(): FieldDef[] {
+  return fieldTemplates.map((field) => createBlankField(field))
+}
 
 function toNumber(value: string): number | null {
   const num = Number.parseFloat(value)
@@ -170,7 +131,9 @@ function speedToColor(speed: number): string {
     const next = ABS_SPEED_COLOR_STOPS[index]
     if (clampedSpeed <= next.speed) {
       const t = (clampedSpeed - prev.speed) / Math.max(1e-6, next.speed - prev.speed)
-      const color = prev.color.map((channel, channelIndex) => mixChannel(channel, next.color[channelIndex], t))
+      const color = prev.color.map((channel, channelIndex) =>
+        mixChannel(channel, next.color[channelIndex], t),
+      )
       return rgbToCss(color)
     }
   }
@@ -180,20 +143,21 @@ function speedToColor(speed: number): string {
 
 const ABS_SPEED_LEGEND_GRADIENT = `linear-gradient(90deg, ${ABS_SPEED_COLOR_STOPS.map((stop) => {
   const offset =
-    ((stop.speed - ABS_COLOR_MIN_SPEED) / Math.max(1e-6, ABS_COLOR_MAX_SPEED - ABS_COLOR_MIN_SPEED)) * 100
+    ((stop.speed - ABS_COLOR_MIN_SPEED) /
+      Math.max(1e-6, ABS_COLOR_MAX_SPEED - ABS_COLOR_MIN_SPEED)) *
+    100
   return `${rgbToCss(stop.color)} ${offset.toFixed(1)}%`
 }).join(', ')})`
 
 type VehicleTelemetryResponse = { points: TelemetryPoint[] }
 
 function App() {
-  const [selectedPresetId, setSelectedPresetId] = useState<string>(VEHICLE_PRESETS[0].id)
   const [inputsOpen, setInputsOpen] = useState<boolean>(false)
 
-  const [fields, setFields] = useState<FieldDef[]>(() => VEHICLE_PRESETS[0].fields.map((f) => ({ ...f })))
+  const [fields, setFields] = useState<FieldDef[]>(() => createBlankFields())
 
-  const [raceDayMin, setRaceDayMin] = useState<FieldDef>(() => ({ ...initialRaceDayMin }))
-  const [batteryWh, setBatteryWh] = useState<FieldDef>(() => ({ ...initialBatteryWh }))
+  const [raceDayMin, setRaceDayMin] = useState<FieldDef>(() => createBlankField(raceDayMinTemplate))
+  const [batteryWh, setBatteryWh] = useState<FieldDef>(() => createBlankField(batteryWhTemplate))
 
   const [result, setResult] = useState('--')
   const [status, setStatus] = useState('')
@@ -210,21 +174,6 @@ function App() {
     accel: 0,
     distance: 0,
   })
-
-  const applyPreset = (presetId: string) => {
-    const preset = VEHICLE_PRESETS.find((p) => p.id === presetId) ?? VEHICLE_PRESETS[0]
-
-    setSelectedPresetId(preset.id)
-    setFields(preset.fields.map((f) => ({ ...f })))
-
-    // also apply "outside" fields if provided
-    if (preset.outside?.raceDayMin != null) {
-      setRaceDayMin((prev) => ({ ...prev, value: preset.outside!.raceDayMin! }))
-    }
-    if (preset.outside?.batteryWh != null) {
-      setBatteryWh((prev) => ({ ...prev, value: preset.outside!.batteryWh! }))
-    }
-  }
 
   const { segments, viewBox, speedRange } = useMemo(() => {
     if (telemetry.length < 2) {
@@ -251,7 +200,12 @@ function App() {
     const width = Math.max(1, maxX - minX)
     const height = Math.max(1, maxY - minY)
 
-    const nextViewBox = [minX - padding, minY - padding, width + padding * 2, height + padding * 2].join(' ')
+    const nextViewBox = [
+      minX - padding,
+      minY - padding,
+      width + padding * 2,
+      height + padding * 2,
+    ].join(' ')
 
     const nextSegments: TrackSegment[] = telemetry.slice(1).map((point, index) => {
       const prev = telemetry[index]
@@ -314,6 +268,7 @@ function App() {
 
     for (const field of fields) {
       if (!DISTANCE_FIELD_NAMES.has(field.name)) continue
+      if (field.value.trim() === '') continue
       const value = toNumber(field.value)
       if (value === null) {
         setStatus(`Invalid value for ${field.name}.`)
@@ -322,19 +277,23 @@ function App() {
       payload[field.name] = value
     }
 
-    const raceMinValue = toNumber(raceDayMin.value)
-    if (raceMinValue === null) {
-      setStatus(`Invalid value for ${raceDayMin.name}.`)
-      return
+    if (raceDayMin.value.trim() !== '') {
+      const raceMinValue = toNumber(raceDayMin.value)
+      if (raceMinValue === null) {
+        setStatus(`Invalid value for ${raceDayMin.name}.`)
+        return
+      }
+      payload[raceDayMin.name] = raceMinValue
     }
-    payload[raceDayMin.name] = raceMinValue
 
-    const batteryValue = toNumber(batteryWh.value)
-    if (batteryValue === null) {
-      setStatus(`Invalid value for ${batteryWh.name}.`)
-      return
+    if (batteryWh.value.trim() !== '') {
+      const batteryValue = toNumber(batteryWh.value)
+      if (batteryValue === null) {
+        setStatus(`Invalid value for ${batteryWh.name}.`)
+        return
+      }
+      payload[batteryWh.name] = batteryValue
     }
-    payload[batteryWh.name] = batteryValue
 
     try {
       const response = await fetch('http://localhost:8080/distance', {
@@ -392,12 +351,12 @@ function App() {
         <div className="preset-row">
           <label>
             Vehicle preset
-            <select value={selectedPresetId} onChange={(e) => applyPreset(e.target.value)} aria-label="Select vehicle preset">
-              {VEHICLE_PRESETS.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.label}
-                </option>
-              ))}
+            <select
+              defaultValue=""
+              disabled
+              aria-label="Vehicle presets will be loaded from the backend"
+            >
+              <option value="">Backend presets pending</option>
             </select>
           </label>
 
@@ -405,7 +364,7 @@ function App() {
             {inputsOpen ? 'Hide inputs' : 'Show inputs'}
           </button>
 
-          <button type="button" className="reset" onClick={() => applyPreset(selectedPresetId)}>
+          <button type="button" className="reset" disabled>
             Reset to preset
           </button>
         </div>
@@ -430,7 +389,9 @@ function App() {
               step={raceDayMin.step}
               name={raceDayMin.name}
               value={raceDayMin.value}
-              onChange={(event) => setRaceDayMin((prev) => ({ ...prev, value: event.target.value }))}
+              onChange={(event) =>
+                setRaceDayMin((prev) => ({ ...prev, value: event.target.value }))
+              }
             />
           </label>
         </div>
@@ -480,7 +441,9 @@ function App() {
                 strokeWidth={trackWidth}
                 strokeLinecap="round"
                 pointerEvents="stroke"
-                onMouseMove={(e) => handleSegmentMove(e, seg.speed, seg.accel, seg.distance, seg.x, seg.y, seg.color)}
+                onMouseMove={(e) =>
+                  handleSegmentMove(e, seg.speed, seg.accel, seg.distance, seg.x, seg.y, seg.color)
+                }
                 onMouseLeave={handleSegmentLeave}
               />
             ))}
@@ -501,7 +464,10 @@ function App() {
 
         <div className="speed-legend" aria-label="Absolute speed legend">
           <div className="speed-legend-title">Absolute speed color scale</div>
-          <div className="speed-legend-bar" style={{ backgroundImage: ABS_SPEED_LEGEND_GRADIENT }} />
+          <div
+            className="speed-legend-bar"
+            style={{ backgroundImage: ABS_SPEED_LEGEND_GRADIENT }}
+          />
           <div className="speed-legend-scale">
             {ABS_COLOR_TICKS.map((tick) => (
               <span key={tick}>{tick.toFixed(0)} m/s</span>
@@ -518,7 +484,10 @@ function App() {
         </div>
       </section>
 
-      <div className={`tooltip ${tooltip.visible ? 'visible' : ''}`} style={{ left: tooltip.x, top: tooltip.y }}>
+      <div
+        className={`tooltip ${tooltip.visible ? 'visible' : ''}`}
+        style={{ left: tooltip.x, top: tooltip.y }}
+      >
         <div>
           Speed: <strong>{tooltip.speed.toFixed(2)}</strong> m/s
         </div>

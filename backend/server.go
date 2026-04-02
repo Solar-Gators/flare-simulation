@@ -17,26 +17,7 @@ import (
 	"net/http" //lets go program talk over web --> Receive requests and send responses
 )
 
-type distanceRequest struct {
-	//these are all struct tags
-	//tells go how struct maps to JSON for encoding and decoding
-
-	V             float64 `json:"v"`
-	BatteryWh     float64 `json:"batteryWh"`
-	SolarWhPerMin float64 `json:"solarWhPerMin"`
-	EtaDrive      float64 `json:"etaDrive"`
-	RaceDayMin    float64 `json:"raceDayMin"`
-	RWheel        float64 `json:"rWheel"`
-	Tmax          float64 `json:"tMax"`
-	Pmax          float64 `json:"pMax"`
-	M             float64 `json:"m"`
-	G             float64 `json:"g"`
-	Crr           float64 `json:"cRr"`
-	Rho           float64 `json:"rho"`
-	Cd            float64 `json:"cD"`
-	A             float64 `json:"a"`
-	Theta         float64 `json:"theta"`
-}
+type distanceRequest = simulationInputs
 
 type distanceResponse struct {
 	DistanceM float64 `json:"distanceM"`
@@ -85,7 +66,8 @@ func main() {
 	//find cruise speed
 	optimalCruiseSpeed = computeOptimalSpeed()
 	//empty router (router is meant to map url to handler)
-	mux := http.NewServeMux()                    //request router (empty --> no route to go), serve multiplexer -->takes http requests and routes it
+	mux := http.NewServeMux() //request router (empty --> no route to go), serve multiplexer -->takes http requests and routes it
+	mux.HandleFunc("/defaults", defaultsHandler)
 	mux.HandleFunc("/distance", distanceHandler) // handler that router directs oncoming requests
 	mux.HandleFunc("/track", trackHandler)
 	mux.HandleFunc("/track/telemetry", trackTelemetryHandler)
@@ -114,9 +96,9 @@ func distanceHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req distanceRequest        // holds parsed JSON
-	dec := json.NewDecoder(r.Body) //decode JSON and read
-	dec.DisallowUnknownFields()    //decoding will fail if JSON has fields that are not valid
+	req := defaultSimulationInputs() // prefill with backend defaults, then let JSON override provided fields
+	dec := json.NewDecoder(r.Body)   //decode JSON and read
+	dec.DisallowUnknownFields()      //decoding will fail if JSON has fields that are not valid
 	if err := dec.Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, distanceResponse{OK: false, Message: "invalid JSON body"})
 		return
@@ -141,6 +123,20 @@ func distanceHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, distanceResponse{DistanceM: distance, OK: true})
+}
+
+func defaultsHandler(w http.ResponseWriter, r *http.Request) {
+	addCORSHeaders(w)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, simulationDefaultsResponse())
 }
 
 // adds specific http response headers
@@ -304,22 +300,11 @@ func trackTelemetryHandler(w http.ResponseWriter, r *http.Request) {
 func buildTelemetry(segments []trackSegment) []telemetryPoint {
 	const (
 		stepM    = 1.0
-		gmax     = 0.8
 		muTire   = 0.9
 		maxSpeed = 40.0
 		vMin     = 0.5
-		A        = 0.456
-		Cd       = 0.21
-		rho      = 1.225
-		Crr      = 0.0015
-		m        = 285.0
-		g        = 9.81
-		theta    = 0.0
-		rWheel   = 0.2792
-		Tmax     = 45.0
-		Pmax     = 10000.0
-		etaDrive = 0.90
 	)
+	inputs := defaultSimulationInputs()
 
 	track := Track{Segments: make([]Segment, 0, len(segments))}
 	for _, seg := range segments {
@@ -330,12 +315,24 @@ func buildTelemetry(segments []trackSegment) []telemetryPoint {
 			track.Segments = append(track.Segments, Segment{Radius: seg.Radius, Angle: seg.Angle})
 		}
 	}
-	samples := sampleTrackMeters(track, stepM, g, gmax)
+	samples := sampleTrackMeters(track, stepM, inputs.G, inputs.Gmax)
 	cruiseCap := math.Min(maxSpeed, optimalCruiseSpeed)
 	if cruiseCap <= 0 {
 		cruiseCap = maxSpeed
 	}
-	profiles := buildProfiles(samples, cruiseCap, 0.95*g, vMin, m, g, Crr, rho, Cd, A, theta)
+	profiles := buildProfiles(
+		samples,
+		cruiseCap,
+		0.95*inputs.G,
+		vMin,
+		inputs.M,
+		inputs.G,
+		inputs.Crr,
+		inputs.Rho,
+		inputs.Cd,
+		inputs.A,
+		inputs.Theta,
+	)
 
 	points := make([]telemetryPoint, 0, 64)
 	x, y, heading := 0.0, 0.0, 0.0
@@ -359,16 +356,40 @@ func buildTelemetry(segments []trackSegment) []telemetryPoint {
 				if profileIdx < len(profiles.Coast) {
 					coastSpeed = profiles.Coast[profileIdx]
 				}
-				aLongMax := muTire * g
+				aLongMax := muTire * inputs.G
 				var a float64
 				if v > brakeSpeed {
 					aReq := (brakeSpeed*brakeSpeed - v*v) / (2 * ds)
 					a = math.Max(aReq, -aLongMax)
 				} else if v > coastSpeed {
-					aCoast := coastDecelFromPower(v, vMin, m, g, Crr, rho, Cd, A, theta)
+					aCoast := coastDecelFromPower(
+						v,
+						vMin,
+						inputs.M,
+						inputs.G,
+						inputs.Crr,
+						inputs.Rho,
+						inputs.Cd,
+						inputs.A,
+						inputs.Theta,
+					)
 					a = math.Max(aCoast, -aLongMax)
 				} else {
-					aPower := accelAtSpeed(v, vMin, rWheel, Tmax, Pmax, etaDrive, m, g, Crr, rho, Cd, A, theta)
+					aPower := accelAtSpeed(
+						v,
+						vMin,
+						inputs.RWheel,
+						inputs.Tmax,
+						inputs.Pmax,
+						inputs.EtaDrive,
+						inputs.M,
+						inputs.G,
+						inputs.Crr,
+						inputs.Rho,
+						inputs.Cd,
+						inputs.A,
+						inputs.Theta,
+					)
 					a = math.Min(aPower, aLongMax)
 				}
 				vNext := updateSpeed(v, a, ds)
@@ -393,7 +414,7 @@ func buildTelemetry(segments []trackSegment) []telemetryPoint {
 				points = append(points, telemetryPoint{X: x, Y: y, Speed: v, Accel: 0, Distance: distance})
 				continue
 			}
-			aLatMax := gmax * g
+			aLatMax := inputs.Gmax * inputs.G
 			vCap := math.Sqrt(aLatMax * seg.Radius)
 			angleDeg := seg.Angle
 			arcLength := seg.Radius * math.Abs(angleDeg) * math.Pi / 180.0
@@ -438,17 +459,41 @@ func buildTelemetry(segments []trackSegment) []telemetryPoint {
 				heading += delta
 				distance += ds
 				aLat := (v * v) / seg.Radius
-				aTotalMax := muTire * g
+				aTotalMax := muTire * inputs.G
 				aLongMax := math.Sqrt(math.Max(0, aTotalMax*aTotalMax-aLat*aLat))
 				var a float64
 				if v > brakeSpeed {
 					aReq := (brakeSpeed*brakeSpeed - v*v) / (2 * ds)
 					a = math.Max(aReq, -aLongMax)
 				} else if v > coastSpeed {
-					aCoast := coastDecelFromPower(v, vMin, m, g, Crr, rho, Cd, A, theta)
+					aCoast := coastDecelFromPower(
+						v,
+						vMin,
+						inputs.M,
+						inputs.G,
+						inputs.Crr,
+						inputs.Rho,
+						inputs.Cd,
+						inputs.A,
+						inputs.Theta,
+					)
 					a = math.Max(aCoast, -aLongMax)
 				} else {
-					aPower := accelAtSpeed(v, vMin, rWheel, Tmax, Pmax, etaDrive, m, g, Crr, rho, Cd, A, theta)
+					aPower := accelAtSpeed(
+						v,
+						vMin,
+						inputs.RWheel,
+						inputs.Tmax,
+						inputs.Pmax,
+						inputs.EtaDrive,
+						inputs.M,
+						inputs.G,
+						inputs.Crr,
+						inputs.Rho,
+						inputs.Cd,
+						inputs.A,
+						inputs.Theta,
+					)
 					a = math.Min(aPower, aLongMax)
 				}
 				vNext := updateSpeed(v, a, ds)
@@ -525,34 +570,49 @@ func coastDecel(
 
 // brought the function from flare_sim file to here ...
 func computeOptimalSpeed() float64 {
-	const (
-		A             = 0.456
-		Cd            = 0.21
-		rho           = 1.225
-		Crr           = 0.0015
-		m             = 285.0
-		g             = 9.81
-		theta         = 0.0
-		rWheel        = 0.2792
-		Tmax          = 45.0
-		Pmax          = 10000.0
-		batteryWh     = 5000.0
-		solarWhPerMin = 5.0
-		etaDrive      = 0.90
-		raceDayMin    = 480.0
-	)
+	inputs := defaultSimulationInputs()
 
 	bestV, bestD := 0.0, 0.0
 	for v := 2.0; v <= 40.0; v += 0.5 {
-		if d, ok := DistanceForSpeedEV(v, batteryWh, solarWhPerMin, etaDrive, raceDayMin,
-			rWheel, Tmax, Pmax, m, g, Crr, rho, Cd, A, theta); ok && d > bestD {
+		if d, ok := DistanceForSpeedEV(
+			v,
+			inputs.BatteryWh,
+			inputs.SolarWhPerMin,
+			inputs.EtaDrive,
+			inputs.RaceDayMin,
+			inputs.RWheel,
+			inputs.Tmax,
+			inputs.Pmax,
+			inputs.M,
+			inputs.G,
+			inputs.Crr,
+			inputs.Rho,
+			inputs.Cd,
+			inputs.A,
+			inputs.Theta,
+		); ok && d > bestD {
 			bestD, bestV = d, v
 		}
 	}
 
 	for v := math.Max(0.5, bestV-2.0); v <= bestV+2.0; v += 0.1 {
-		if d, ok := DistanceForSpeedEV(v, batteryWh, solarWhPerMin, etaDrive, raceDayMin,
-			rWheel, Tmax, Pmax, m, g, Crr, rho, Cd, A, theta); ok && d > bestD {
+		if d, ok := DistanceForSpeedEV(
+			v,
+			inputs.BatteryWh,
+			inputs.SolarWhPerMin,
+			inputs.EtaDrive,
+			inputs.RaceDayMin,
+			inputs.RWheel,
+			inputs.Tmax,
+			inputs.Pmax,
+			inputs.M,
+			inputs.G,
+			inputs.Crr,
+			inputs.Rho,
+			inputs.Cd,
+			inputs.A,
+			inputs.Theta,
+		); ok && d > bestD {
 			bestD, bestV = d, v
 		}
 	}
