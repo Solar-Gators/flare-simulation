@@ -2,6 +2,11 @@ import type { FormEvent, MouseEvent } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 import TelemetryGraph from './components/TelemetryGraph'
+import {
+  getDefaultPresets,
+  type SimulationInputs,
+  type SimulationPreset,
+} from './services/getDefaultPresets'
 
 type TelemetryPoint = {
   x: number
@@ -51,6 +56,7 @@ type FieldTemplate = Omit<FieldDef, 'value'>
 // UI field definitions live here, but the numeric defaults now live only in the backend.
 const fieldTemplates: FieldTemplate[] = [
   { name: 'v', label: 'v (m/s)', step: '0.1' },
+  { name: 'solarWhPerMin', label: 'solarWhPerMin', step: '0.1' },
   { name: 'etaDrive', label: 'etaDrive', step: '0.01' },
   { name: 'rWheel', label: 'rWheel (m)', step: '0.0001' },
   { name: 'tMax', label: 'tMax (N·m)', step: '0.1' },
@@ -85,6 +91,7 @@ const DISTANCE_FIELD_NAMES = new Set([
   'cD',
   'a',
   'theta',
+  'gmax',
 ])
 
 const ABS_SPEED_COLOR_STOPS = [
@@ -108,6 +115,59 @@ function createBlankField(field: FieldTemplate): FieldDef {
 
 function createBlankFields(): FieldDef[] {
   return fieldTemplates.map((field) => createBlankField(field))
+}
+
+function createFieldFromValue(field: FieldTemplate, value: number): FieldDef {
+  return { ...field, value: String(value) }
+}
+
+function createFieldsFromInputs(inputs: SimulationInputs): FieldDef[] {
+  return fieldTemplates.map((field) => {
+    switch (field.name) {
+      case 'v':
+        return createFieldFromValue(field, inputs.v)
+      case 'solarWhPerMin':
+        return createFieldFromValue(field, inputs.solarWhPerMin)
+      case 'etaDrive':
+        return createFieldFromValue(field, inputs.etaDrive)
+      case 'rWheel':
+        return createFieldFromValue(field, inputs.rWheel)
+      case 'tMax':
+        return createFieldFromValue(field, inputs.tMax)
+      case 'pMax':
+        return createFieldFromValue(field, inputs.pMax)
+      case 'm':
+        return createFieldFromValue(field, inputs.m)
+      case 'g':
+        return createFieldFromValue(field, inputs.g)
+      case 'cRr':
+        return createFieldFromValue(field, inputs.cRr)
+      case 'rho':
+        return createFieldFromValue(field, inputs.rho)
+      case 'cD':
+        return createFieldFromValue(field, inputs.cD)
+      case 'a':
+        return createFieldFromValue(field, inputs.a)
+      case 'theta':
+        return createFieldFromValue(field, inputs.theta)
+      case 'gmax':
+        return createFieldFromValue(field, inputs.gmax)
+      default:
+        return createBlankField(field)
+    }
+  })
+}
+
+function createFormStateFromInputs(inputs: SimulationInputs): {
+  fields: FieldDef[]
+  batteryWh: FieldDef
+  raceDayMin: FieldDef
+} {
+  return {
+    fields: createFieldsFromInputs(inputs),
+    batteryWh: createFieldFromValue(batteryWhTemplate, inputs.batteryWh),
+    raceDayMin: createFieldFromValue(raceDayMinTemplate, inputs.raceDayMin),
+  }
 }
 
 function toNumber(value: string): number | null {
@@ -162,6 +222,9 @@ function App() {
 
   const [raceDayMin, setRaceDayMin] = useState<FieldDef>(() => createBlankField(raceDayMinTemplate))
   const [batteryWh, setBatteryWh] = useState<FieldDef>(() => createBlankField(batteryWhTemplate))
+  const [presets, setPresets] = useState<SimulationPreset[]>([])
+  const [selectedPresetId, setSelectedPresetId] = useState('')
+  const [presetStatus, setPresetStatus] = useState('Loading presets...')
 
   const [result, setResult] = useState('--')
   const [status, setStatus] = useState('')
@@ -179,6 +242,46 @@ function App() {
     accel: 0,
     distance: 0,
   })
+
+  const selectedPreset = presets.find((preset) => preset.id === selectedPresetId) ?? null
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadPresets = async () => {
+      try {
+        const data = await getDefaultPresets()
+        const preset =
+          data.presets.find((item) => item.id === data.defaultPresetId) ?? data.presets[0]
+
+        if (!isMounted) return
+
+        setPresets(data.presets)
+
+        if (!preset) {
+          setPresetStatus('No backend presets available.')
+          return
+        }
+
+        const nextFormState = createFormStateFromInputs(preset.inputs)
+
+        setSelectedPresetId(preset.id)
+        setFields(nextFormState.fields)
+        setBatteryWh(nextFormState.batteryWh)
+        setRaceDayMin(nextFormState.raceDayMin)
+        setPresetStatus('')
+      } catch (error) {
+        console.error('Failed to load default presets', error)
+        if (isMounted) setPresetStatus('Failed to load backend presets.')
+      }
+    }
+
+    void loadPresets()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   const { segments, viewBox, speedRange } = useMemo(() => {
     if (telemetry.length < 2) {
@@ -274,6 +377,28 @@ function App() {
     setFields((prev) => prev.map((field) => (field.name === name ? { ...field, value } : field)))
   }
 
+  const handlePresetChange = (presetId: string) => {
+    const preset = presets.find((item) => item.id === presetId)
+    if (!preset) return
+
+    const nextFormState = createFormStateFromInputs(preset.inputs)
+
+    setSelectedPresetId(preset.id)
+    setFields(nextFormState.fields)
+    setBatteryWh(nextFormState.batteryWh)
+    setRaceDayMin(nextFormState.raceDayMin)
+  }
+
+  const handlePresetReset = () => {
+    if (!selectedPreset) return
+
+    const nextFormState = createFormStateFromInputs(selectedPreset.inputs)
+
+    setFields(nextFormState.fields)
+    setBatteryWh(nextFormState.batteryWh)
+    setRaceDayMin(nextFormState.raceDayMin)
+  }
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setStatus('Calculating...')
@@ -366,11 +491,20 @@ function App() {
           <label>
             Vehicle preset
             <select
-              defaultValue=""
-              disabled
-              aria-label="Vehicle presets will be loaded from the backend"
+              value={selectedPresetId}
+              disabled={presets.length === 0}
+              aria-label="Vehicle preset"
+              onChange={(event) => handlePresetChange(event.target.value)}
             >
-              <option value="">Backend presets pending</option>
+              {presets.length === 0 ? (
+                <option value="">{presetStatus || 'Backend presets pending'}</option>
+              ) : (
+                presets.map((preset) => (
+                  <option key={preset.id} value={preset.id}>
+                    {preset.label}
+                  </option>
+                ))
+              )}
             </select>
           </label>
 
@@ -378,10 +512,11 @@ function App() {
             {inputsOpen ? 'Hide inputs' : 'Show inputs'}
           </button>
 
-          <button type="button" className="reset" disabled>
+          <button type="button" className="reset" disabled={!selectedPreset} onClick={handlePresetReset}>
             Reset to preset
           </button>
         </div>
+        {presetStatus ? <div className="status">{presetStatus}</div> : null}
 
         {/* batteryWh + raceDayMin outside the expandable inputs */}
         <div className="preset-row" style={{ marginTop: 12 }}>

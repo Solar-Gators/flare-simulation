@@ -10,6 +10,7 @@ import (
 	//also for encoding struct back into JSON format for HTTP response
 	"encoding/json"
 	"strconv"
+
 	//allows for original sim to be called via terminal using flag
 	"flag"
 	"fmt"
@@ -80,6 +81,7 @@ func main() {
 		log.Fatal(err)
 	}
 }
+
 
 // is the HTTP handler
 // w --> is outgoing http response (write)
@@ -410,7 +412,7 @@ func buildTelemetryOneLapWithWraparound(
 
 	points := make([]telemetryPoint, 0, 64)
 	x, y, heading := 0.0, 0.0, 0.0
-	startSpeed, err = validateTelemetryStartSpeed(startSpeed)
+	startSpeed, err := validateTelemetryStartSpeed(startSpeed)
 	if err != nil {
 		return nil, err
 	}
