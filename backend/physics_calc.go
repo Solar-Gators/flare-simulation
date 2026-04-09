@@ -141,6 +141,7 @@ func backwardCoastFeasibilityPass(
 	Cd float64,
 	A float64,
 	theta float64,
+	additionalEfficiency float64,
 ) speedProfile {
 	feasible := make(speedProfile, len(limits))
 	copy(feasible, limits)
@@ -159,7 +160,7 @@ func backwardCoastFeasibilityPass(
 		}
 
 		next := feasible[i+1]
-		coastA := -coastDecelFromPower(next, vMin, m, g, Crr, rho, Cd, A, theta)
+		coastA := -coastDecelFromPower(next, vMin, m, g, Crr, rho, Cd, A, theta, additionalEfficiency)
 		if coastA <= 0 {
 			continue
 		}
@@ -186,10 +187,11 @@ func buildProfiles(
 	Cd float64,
 	A float64,
 	theta float64,
+	additionalEfficiency float64,
 ) profileSet {
 	base := buildSpeedProfile(samples, cruiseCapMPS)
 	brake := backwardFeasibilityPass(base, samples, maxBrakeMPS2)
-	coast := backwardCoastFeasibilityPass(base, samples, vMin, m, g, Crr, rho, Cd, A, theta)
+	coast := backwardCoastFeasibilityPass(base, samples, vMin, m, g, Crr, rho, Cd, A, theta, additionalEfficiency)
 	return profileSet{
 		Base:  base,
 		Brake: brake,
@@ -212,8 +214,8 @@ func calcCurveSpeed(segments Segment, gravity float64, gmax float64) float64 {
 // }
 
 // Power required to maintaining coasting speed
-func PowerRequired(v, m, g, Crr, rho, Cd, A, theta float64) float64 {
-	return (Crr*m*g+m*g*math.Sin(theta))*v + 0.5*rho*Cd*A*v*v*v
+func PowerRequired(v, m, g, Crr, rho, Cd, A, theta, additionalEfficiency float64) float64 {
+	return ((Crr*m*g+m*g*math.Sin(theta))*v + 0.5*rho*Cd*A*v*v*v) * (1 + additionalEfficiency/100)
 }
 
 //Calculates wheel mechanical power
@@ -254,12 +256,12 @@ func DistanceForSpeedEV(
 	// EV capability:
 	rWheel, Tmax, Pmax float64,
 	// Env/vehicle:
-	m, g, Crr, rho, Cd, A, theta float64,
+	m, g, Crr, rho, Cd, A, theta, additionalEfficiency float64,
 ) (float64, bool) {
 	if v <= 0 || raceDayMin <= 0 || etaDrive <= 0 {
 		return 0, false
 	}
-	Preq := PowerRequired(v, m, g, Crr, rho, Cd, A, theta) // wheel W
+	Preq := PowerRequired(v, m, g, Crr, rho, Cd, A, theta, additionalEfficiency) // wheel W
 	if Preq <= 0 || math.IsNaN(Preq) || math.IsInf(Preq, 0) {
 		return 0, false
 	}
@@ -287,9 +289,9 @@ func DistanceForSpeedEV(
 	return v * tEnd, true
 }
 
-func coastDecelFromPower(v, vMin, m, g, Crr, rho, Cd, A, theta float64) float64 {
+func coastDecelFromPower(v, vMin, m, g, Crr, rho, Cd, A, theta, additionalEfficiency float64) float64 {
 	vEff := math.Max(v, vMin)
-	Pres := PowerRequired(v, m, g, Crr, rho, Cd, A, theta)
+	Pres := PowerRequired(v, m, g, Crr, rho, Cd, A, theta, additionalEfficiency)
 	Fres := Pres / vEff
 	return -Fres / m
 }
@@ -302,14 +304,14 @@ func coastDistanceToSpeed(
 	v0, vTarget float64,
 	stepM float64,
 	vMin float64,
-	m, g, Crr, rho, Cd, A, theta float64,
+	m, g, Crr, rho, Cd, A, theta, additionalEfficiency float64,
 ) (dist float64) {
 	if v0 <= vTarget {
 		return 0
 	}
 	v := v0
 	for v > vTarget {
-		a := coastDecelFromPower(v, vMin, m, g, Crr, rho, Cd, A, theta) // negative
+		a := coastDecelFromPower(v, vMin, m, g, Crr, rho, Cd, A, theta, additionalEfficiency) // negative
 		if a >= 0 {
 			// should never happen unless downhill overwhelms drag+rr
 			break

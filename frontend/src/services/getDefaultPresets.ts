@@ -15,6 +15,7 @@ export type SimulationInputs = {
   a: number
   theta: number
   gmax: number
+  additionalEfficiency: number
 }
 
 export type SimulationPreset = {

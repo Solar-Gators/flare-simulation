@@ -27,6 +27,18 @@ type distanceResponse struct {
 	Message   string  `json:"message,omitempty"`
 }
 
+type simulateRequest struct {
+	Inputs     simulationInputs `json:"inputs"`
+	Wraparound bool             `json:"wraparound"`
+}
+
+type simulateResponse struct {
+	DistanceM float64          `json:"distanceM"`
+	Points    []telemetryPoint `json:"points"`
+	OK        bool             `json:"ok"`
+	Message   string           `json:"message,omitempty"`
+}
+
 type trackSegment struct {
 	Type      string  `json:"type"`
 	Length    float64 `json:"length,omitempty"`
@@ -71,6 +83,7 @@ func main() {
 	mux := http.NewServeMux() //request router (empty --> no route to go), serve multiplexer -->takes http requests and routes it
 	mux.HandleFunc("/defaults", defaultsHandler)
 	mux.HandleFunc("/distance", distanceHandler) // handler that router directs oncoming requests
+	mux.HandleFunc("/simulate", simulateHandler)
 	mux.HandleFunc("/track", trackHandler)
 	mux.HandleFunc("/track/telemetry", trackTelemetryHandler)
 
@@ -106,25 +119,79 @@ func distanceHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.V <= 0 || req.BatteryWh <= 0 || req.EtaDrive <= 0 || req.RaceDayMin <= 0 ||
-		req.RWheel <= 0 || req.Tmax <= 0 || req.Pmax <= 0 || req.M <= 0 || req.G <= 0 ||
-		req.Crr < 0 || req.Rho <= 0 || req.Cd <= 0 || req.A <= 0 {
-		writeJSON(w, http.StatusBadRequest, distanceResponse{OK: false, Message: "missing or invalid input values"})
+	if err := validateSimulationInputs(req); err != nil {
+		writeJSON(w, http.StatusBadRequest, distanceResponse{OK: false, Message: err.Error()})
 		return
 	}
 	//run sim if everything is valid
-	distance, ok := DistanceForSpeedEV(
-		req.V,
-		req.BatteryWh, req.SolarWhPerMin, req.EtaDrive, req.RaceDayMin,
-		req.RWheel, req.Tmax, req.Pmax,
-		req.M, req.G, req.Crr, req.Rho, req.Cd, req.A, req.Theta,
-	)
+	distance, ok := distanceForInputs(req)
 	if !ok {
 		writeJSON(w, http.StatusBadRequest, distanceResponse{OK: false, Message: "inputs are not feasible for the model"})
 		return
 	}
 
 	writeJSON(w, http.StatusOK, distanceResponse{DistanceM: distance, OK: true})
+}
+
+func simulateHandler(w http.ResponseWriter, r *http.Request) {
+	addCORSHeaders(w)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	req := simulateRequest{
+		Inputs:     defaultSimulationInputs(),
+		Wraparound: true,
+	}
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, simulateResponse{OK: false, Message: "invalid JSON body"})
+		return
+	}
+
+	if err := validateSimulationInputs(req.Inputs); err != nil {
+		writeJSON(w, http.StatusBadRequest, simulateResponse{OK: false, Message: err.Error()})
+		return
+	}
+
+	distance, ok := distanceForInputs(req.Inputs)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, simulateResponse{OK: false, Message: "inputs are not feasible for the model"})
+		return
+	}
+
+	points, err := buildTelemetryForInputs(defaultTrackSegments(), req.Wraparound, req.Inputs)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, simulateResponse{OK: false, Message: err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, simulateResponse{DistanceM: distance, Points: points, OK: true})
+}
+
+func validateSimulationInputs(req simulationInputs) error {
+	if req.V <= 0 || req.BatteryWh <= 0 || req.EtaDrive <= 0 || req.RaceDayMin <= 0 ||
+		req.RWheel <= 0 || req.Tmax <= 0 || req.Pmax <= 0 || req.M <= 0 || req.G <= 0 ||
+		req.Crr < 0 || req.Rho <= 0 || req.Cd <= 0 || req.A <= 0 || req.Gmax <= 0 ||
+		req.AdditionalEfficiency < -100 || req.AdditionalEfficiency > 100 {
+		return fmt.Errorf("missing or invalid input values")
+	}
+	return nil
+}
+
+func distanceForInputs(req simulationInputs) (float64, bool) {
+	return DistanceForSpeedEV(
+		req.V,
+		req.BatteryWh, req.SolarWhPerMin, req.EtaDrive, req.RaceDayMin,
+		req.RWheel, req.Tmax, req.Pmax,
+		req.M, req.G, req.Crr, req.Rho, req.Cd, req.A, req.Theta, req.AdditionalEfficiency,
+	)
 }
 
 func defaultsHandler(w http.ResponseWriter, r *http.Request) {
@@ -312,12 +379,17 @@ const (
 )
 
 func buildTelemetry(segments []trackSegment, wraparound bool) ([]telemetryPoint, error) {
+	return buildTelemetryForInputs(segments, wraparound, defaultSimulationInputs())
+}
+
+func buildTelemetryForInputs(segments []trackSegment, wraparound bool, inputs simulationInputs) ([]telemetryPoint, error) {
 	if !wraparound {
-		return buildTelemetryOneLapWithWraparound(segments, defaultTelemetryStartSpeed, false)
+		return buildTelemetryOneLapWithWraparoundForInputs(segments, defaultTelemetryStartSpeed, false, inputs)
 	}
 
-	startSpeed, err := warmTelemetryStartSpeed(
+	startSpeed, err := warmTelemetryStartSpeedForInputs(
 		segments,
+		inputs,
 		defaultTelemetryStartSpeed,
 		telemetryWarmupMaxLaps,
 		telemetryWarmupTolerance,
@@ -325,14 +397,18 @@ func buildTelemetry(segments []trackSegment, wraparound bool) ([]telemetryPoint,
 	if err != nil {
 		return nil, err
 	}
-	return buildTelemetryOneLapWithWraparound(segments, startSpeed, true)
+	return buildTelemetryOneLapWithWraparoundForInputs(segments, startSpeed, true, inputs)
 }
 
 // buildTelemetryOneLap simulates a single lap and starts from the provided speed.
 // This is the primitive needed for later wraparound support, where one lap warms up
 // the state and the next lap starts from the previous lap's terminal speed.
 func buildTelemetryOneLap(segments []trackSegment, startSpeed float64) ([]telemetryPoint, error) {
-	return buildTelemetryOneLapWithWraparound(segments, startSpeed, true)
+	return buildTelemetryOneLapForInputs(segments, startSpeed, defaultSimulationInputs())
+}
+
+func buildTelemetryOneLapForInputs(segments []trackSegment, startSpeed float64, inputs simulationInputs) ([]telemetryPoint, error) {
+	return buildTelemetryOneLapWithWraparoundForInputs(segments, startSpeed, true, inputs)
 }
 
 // buildTelemetryOneLapWithWraparound simulates one lap and chooses whether the
@@ -343,30 +419,37 @@ func buildTelemetryOneLapWithWraparound(
 	startSpeed float64,
 	wraparound bool,
 ) ([]telemetryPoint, error) {
+	return buildTelemetryOneLapWithWraparoundForInputs(
+		segments,
+		startSpeed,
+		wraparound,
+		defaultSimulationInputs(),
+	)
+}
+
+func buildTelemetryOneLapWithWraparoundForInputs(
+	segments []trackSegment,
+	startSpeed float64,
+	wraparound bool,
+	inputs simulationInputs,
+) ([]telemetryPoint, error) {
 	const (
 		stepM    = 1.0
 		muTire   = 0.9
 		maxSpeed = 40.0
 		vMin     = 0.5
 	)
-	inputs := defaultSimulationInputs()
 
-	track := Track{Segments: make([]Segment, 0, len(segments))}
-	for _, seg := range segments {
-		switch seg.Type {
-		case "straight":
-			track.Segments = append(track.Segments, Segment{Length: seg.Length})
-		case "curve":
-			track.Segments = append(track.Segments, Segment{Radius: seg.Radius, Angle: seg.Angle})
-		}
-	}
-	samples := sampleTrackMeters(track, stepM, inputs.G, inputs.Gmax)
-	cruiseCap := math.Min(maxSpeed, optimalCruiseSpeed)
+	track := telemetryTrackFromSegments(segments)
+	cruiseCap := math.Min(maxSpeed, inputs.V)
 	if cruiseCap <= 0 {
 		cruiseCap = maxSpeed
 	}
-	profiles := buildProfiles(
-		samples,
+	profiles, err := buildTelemetryProfiles(
+		track,
+		wraparound,
+		stepM,
+		inputs.Gmax,
 		cruiseCap,
 		0.95*inputs.G,
 		vMin,
@@ -377,11 +460,15 @@ func buildTelemetryOneLapWithWraparound(
 		inputs.Cd,
 		inputs.A,
 		inputs.Theta,
+		inputs.AdditionalEfficiency,
 	)
+	if err != nil {
+		return nil, err
+	}
 
 	points := make([]telemetryPoint, 0, 64)
 	x, y, heading := 0.0, 0.0, 0.0
-	startSpeed, err := validateTelemetryStartSpeed(startSpeed)
+	startSpeed, err = validateTelemetryStartSpeed(startSpeed)
 	if err != nil {
 		return nil, err
 	}
@@ -424,6 +511,7 @@ func buildTelemetryOneLapWithWraparound(
 						inputs.Cd,
 						inputs.A,
 						inputs.Theta,
+						inputs.AdditionalEfficiency,
 					)
 					a = math.Max(aCoast, -aLongMax)
 				} else {
@@ -441,6 +529,7 @@ func buildTelemetryOneLapWithWraparound(
 						inputs.Cd,
 						inputs.A,
 						inputs.Theta,
+						inputs.AdditionalEfficiency,
 					)
 					a = math.Min(aPower, aLongMax)
 				}
@@ -528,6 +617,7 @@ func buildTelemetryOneLapWithWraparound(
 						inputs.Cd,
 						inputs.A,
 						inputs.Theta,
+						inputs.AdditionalEfficiency,
 					)
 					a = math.Max(aCoast, -aLongMax)
 				} else {
@@ -545,6 +635,7 @@ func buildTelemetryOneLapWithWraparound(
 						inputs.Cd,
 						inputs.A,
 						inputs.Theta,
+						inputs.AdditionalEfficiency,
 					)
 					a = math.Min(aPower, aLongMax)
 				}
@@ -617,15 +708,16 @@ func buildTelemetryProfiles(
 	Cd float64,
 	A float64,
 	theta float64,
+	additionalEfficiency float64,
 ) (profileSet, error) {
 	samples := sampleTrackMeters(track, stepM, g, gmax)
 	if !wraparound || len(samples) == 0 {
-		return buildProfiles(samples, cruiseCap, maxBrakeMPS2, vMin, m, g, Crr, rho, Cd, A, theta), nil
+		return buildProfiles(samples, cruiseCap, maxBrakeMPS2, vMin, m, g, Crr, rho, Cd, A, theta, additionalEfficiency), nil
 	}
 
 	wrappedTrack := repeatTrack(track, telemetryWrapProfileLaps)
 	wrappedSamples := sampleTrackMeters(wrappedTrack, stepM, g, gmax)
-	wrappedProfiles := buildProfiles(wrappedSamples, cruiseCap, maxBrakeMPS2, vMin, m, g, Crr, rho, Cd, A, theta)
+	wrappedProfiles := buildProfiles(wrappedSamples, cruiseCap, maxBrakeMPS2, vMin, m, g, Crr, rho, Cd, A, theta, additionalEfficiency)
 
 	oneLapCount := len(samples)
 	start := oneLapCount
@@ -664,6 +756,22 @@ func warmTelemetryStartSpeed(
 	maxLaps int,
 	tolerance float64,
 ) (float64, error) {
+	return warmTelemetryStartSpeedForInputs(
+		segments,
+		defaultSimulationInputs(),
+		initialStartSpeed,
+		maxLaps,
+		tolerance,
+	)
+}
+
+func warmTelemetryStartSpeedForInputs(
+	segments []trackSegment,
+	inputs simulationInputs,
+	initialStartSpeed float64,
+	maxLaps int,
+	tolerance float64,
+) (float64, error) {
 	startSpeed, err := validateTelemetryStartSpeed(initialStartSpeed)
 	if err != nil {
 		return 0, err
@@ -676,7 +784,7 @@ func warmTelemetryStartSpeed(
 	}
 
 	for lap := 0; lap < maxLaps; lap++ {
-		points, err := buildTelemetryOneLap(segments, startSpeed)
+		points, err := buildTelemetryOneLapForInputs(segments, startSpeed, inputs)
 		if err != nil {
 			return 0, err
 		}
@@ -708,6 +816,7 @@ func accelAtSpeed(
 	Cd float64,
 	A float64,
 	theta float64,
+	additionalEfficiency float64,
 ) float64 {
 	vEff := math.Max(v, vMin)
 	pAvail := WheelPowerEV(v, Tmax, Pmax, rWheel, etaDrive)
@@ -715,7 +824,7 @@ func accelAtSpeed(
 	if v < vMin && rWheel > 0 {
 		fDrive = Tmax / rWheel
 	}
-	pRes := PowerRequired(v, m, g, Crr, rho, Cd, A, theta)
+	pRes := PowerRequired(v, m, g, Crr, rho, Cd, A, theta, additionalEfficiency)
 	fRes := pRes / vEff
 	return (fDrive - fRes) / m
 }
@@ -743,9 +852,10 @@ func coastDecel(
 	Cd float64,
 	A float64,
 	theta float64,
+	additionalEfficiency float64,
 ) float64 {
 	vEff := math.Max(v, vMin)
-	pRes := PowerRequired(v, m, g, Crr, rho, Cd, A, theta)
+	pRes := PowerRequired(v, m, g, Crr, rho, Cd, A, theta, additionalEfficiency)
 	fRes := pRes / vEff
 	return -fRes / m
 }
@@ -772,6 +882,7 @@ func computeOptimalSpeed() float64 {
 			inputs.Cd,
 			inputs.A,
 			inputs.Theta,
+			inputs.AdditionalEfficiency,
 		); ok && d > bestD {
 			bestD, bestV = d, v
 		}
@@ -794,6 +905,7 @@ func computeOptimalSpeed() float64 {
 			inputs.Cd,
 			inputs.A,
 			inputs.Theta,
+			inputs.AdditionalEfficiency,
 		); ok && d > bestD {
 			bestD, bestV = d, v
 		}

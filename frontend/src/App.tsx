@@ -1,5 +1,5 @@
 import type { FormEvent, MouseEvent } from 'react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import TelemetryGraph from './components/TelemetryGraph'
 import {
@@ -14,6 +14,13 @@ type TelemetryPoint = {
   speed: number
   accel: number
   distance: number
+}
+
+type SimulateResponse = {
+  distanceM?: number
+  points?: TelemetryPoint[]
+  ok?: boolean
+  message?: string
 }
 
 type TrackSegment = {
@@ -51,24 +58,21 @@ type FieldDef = {
   max?: string
 }
 
-type FieldTemplate = Omit<FieldDef, 'value'>
-
-// UI field definitions live here, but the numeric defaults now live only in the backend.
-const fieldTemplates: FieldTemplate[] = [
-  { name: 'v', label: 'v (m/s)', step: '0.1' },
-  { name: 'solarWhPerMin', label: 'solarWhPerMin', step: '0.1' },
-  { name: 'etaDrive', label: 'etaDrive', step: '0.01' },
-  { name: 'rWheel', label: 'rWheel (m)', step: '0.0001' },
-  { name: 'tMax', label: 'tMax (N·m)', step: '0.1' },
-  { name: 'pMax', label: 'pMax (W)', step: '1' },
-  { name: 'm', label: 'm (kg)', step: '0.1' },
-  { name: 'g', label: 'g (m/s^2)', step: '0.01' },
-  { name: 'cRr', label: 'cRr', step: '0.0001' },
-  { name: 'rho', label: 'rho', step: '0.001' },
-  { name: 'cD', label: 'cD', step: '0.01' },
-  { name: 'a', label: 'a (m^2)', step: '0.001' },
-  { name: 'theta', label: 'theta (rad)', step: '0.001' },
-  { name: 'gmax', label: 'gmax (lateral g limit)', step: '0.01', min: '0.1', max: '2.0' },
+// input fields for distance calculator (no solarWhPerMin, no raceDayMin, no batteryWh here)
+const initialFields: FieldDef[] = [
+  { name: 'v', label: 'Baseline Velocity (m/s)', step: '0.1', value: '' },
+  { name: 'etaDrive', label: 'Drivetrain Efficiency (%)', step: '0.01', value: '' },
+  { name: 'rWheel', label: 'Wheel Radius (m)', step: '0.0001', value: '' },
+  { name: 'tMax', label: 'Max Motor Torque (N·m)', step: '0.1', value: '' },
+  { name: 'pMax', label: 'Max Motor Power (W)', step: '1', value: '' },
+  { name: 'm', label: 'Mass (kg)', step: '0.1', value: '' },
+  { name: 'g', label: 'Gravity (m/s^2)', step: '0.01', value: '' },
+  { name: 'cRr', label: 'Rolling Resistance Coefficient', step: '0.0001', value: '' },
+  { name: 'rho', label: 'rho', step: '0.001', value: '' },
+  { name: 'cD', label: 'Drag Coefficient', step: '0.01', value: '' },
+  { name: 'a', label: 'Frontal Area (m^2)', step: '0.001', value: '' },
+  { name: 'theta', label: 'Track Grade (rad)', step: '0.001', value: '' },
+  { name: 'gmax', label: 'Lateral G-force Limit', step: '0.01', value: '' },
 ]
 
 const ABS_COLOR_MIN_SPEED = 0.0
@@ -78,6 +82,7 @@ const ABS_COLOR_TICKS = [0, 6, 12, 18, 24] as const
 const DISTANCE_FIELD_NAMES = new Set([
   'v',
   'batteryWh',
+  'additionalEfficiency',
   'solarWhPerMin',
   'etaDrive',
   'raceDayMin',
@@ -106,28 +111,45 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
 }
 
-const raceDayMinTemplate: FieldTemplate = { name: 'raceDayMin', label: 'raceDayMin', step: '1' }
-const batteryWhTemplate: FieldTemplate = { name: 'batteryWh', label: 'batteryWh', step: '1' }
+// independent fields (outside the expandable inputs)
+const initialRaceDayMin: FieldDef = {
+  name: 'raceDayMin',
+  label: 'Race Day Time (min)',
+  step: '1',
+  value: '',
+}
+const initialBatteryWh: FieldDef = {
+  name: 'batteryWh',
+  label: 'Battery Power (Wh)',
+  step: '1',
+  value: '',
+}
+const initialAdditionalEfficiency: FieldDef = {
+  name: 'additionalEfficiency',
+  label: 'Additional Efficiency (%)',
+  step: '1',
+  value: '',
+  min: '-100.00',
+  max: '100.00',
+}
 
-function createBlankField(field: FieldTemplate): FieldDef {
-  return { ...field, value: '' }
+function createBlankField(field: FieldDef): FieldDef {
+  return { ...field }
 }
 
 function createBlankFields(): FieldDef[] {
-  return fieldTemplates.map((field) => createBlankField(field))
+  return initialFields.map((field) => createBlankField(field))
 }
 
-function createFieldFromValue(field: FieldTemplate, value: number): FieldDef {
+function createFieldFromValue(field: FieldDef, value: number): FieldDef {
   return { ...field, value: String(value) }
 }
 
 function createFieldsFromInputs(inputs: SimulationInputs): FieldDef[] {
-  return fieldTemplates.map((field) => {
+  return initialFields.map((field) => {
     switch (field.name) {
       case 'v':
         return createFieldFromValue(field, inputs.v)
-      case 'solarWhPerMin':
-        return createFieldFromValue(field, inputs.solarWhPerMin)
       case 'etaDrive':
         return createFieldFromValue(field, inputs.etaDrive)
       case 'rWheel':
@@ -162,11 +184,16 @@ function createFormStateFromInputs(inputs: SimulationInputs): {
   fields: FieldDef[]
   batteryWh: FieldDef
   raceDayMin: FieldDef
+  additionalEfficiency: FieldDef
 } {
   return {
     fields: createFieldsFromInputs(inputs),
-    batteryWh: createFieldFromValue(batteryWhTemplate, inputs.batteryWh),
-    raceDayMin: createFieldFromValue(raceDayMinTemplate, inputs.raceDayMin),
+    batteryWh: createFieldFromValue(initialBatteryWh, inputs.batteryWh),
+    raceDayMin: createFieldFromValue(initialRaceDayMin, inputs.raceDayMin),
+    additionalEfficiency: createFieldFromValue(
+      initialAdditionalEfficiency,
+      inputs.additionalEfficiency,
+    ),
   }
 }
 
@@ -215,16 +242,59 @@ function telemetryUrl(wraparoundEnabled: boolean): string {
   return url.toString()
 }
 
+function formatTrackStatus(pointCount: number, wraparoundEnabled: boolean): string {
+  return `Telemetry points: ${pointCount} · Wraparound ${wraparoundEnabled ? 'on' : 'off'}`
+}
+
+async function postSimulation(
+  inputs: Record<string, number>,
+  wraparoundEnabled: boolean,
+): Promise<{ distanceM: number; points: TelemetryPoint[] }> {
+  let response: Response
+
+  try {
+    response = await fetch('http://localhost:8080/simulate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ inputs, wraparound: wraparoundEnabled }),
+    })
+  } catch {
+    throw new Error('Network error. Is the server running?')
+  }
+
+  let data: SimulateResponse
+  try {
+    data = (await response.json()) as SimulateResponse
+  } catch {
+    throw new Error('Request failed.')
+  }
+
+  if (
+    !response.ok ||
+    !data.ok ||
+    typeof data.distanceM !== 'number' ||
+    !Array.isArray(data.points)
+  ) {
+    throw new Error(data.message || 'Request failed.')
+  }
+
+  return { distanceM: data.distanceM, points: data.points }
+}
+
 function App() {
   const [inputsOpen, setInputsOpen] = useState<boolean>(false)
 
   const [fields, setFields] = useState<FieldDef[]>(() => createBlankFields())
 
-  const [raceDayMin, setRaceDayMin] = useState<FieldDef>(() => createBlankField(raceDayMinTemplate))
-  const [batteryWh, setBatteryWh] = useState<FieldDef>(() => createBlankField(batteryWhTemplate))
+  const [raceDayMin, setRaceDayMin] = useState<FieldDef>(() => createBlankField(initialRaceDayMin))
+  const [batteryWh, setBatteryWh] = useState<FieldDef>(() => createBlankField(initialBatteryWh))
   const [presets, setPresets] = useState<SimulationPreset[]>([])
   const [selectedPresetId, setSelectedPresetId] = useState('')
   const [presetStatus, setPresetStatus] = useState('Loading presets...')
+  const [additionalEfficiency, setAdditionalEfficiency] = useState<FieldDef>(() => ({
+    ...initialAdditionalEfficiency,
+  }))
+  const [telemetryAdditionalEfficiency, setTelemetryAdditionalEfficiency] = useState(0)
 
   const [result, setResult] = useState('--')
   const [status, setStatus] = useState('')
@@ -233,6 +303,7 @@ function App() {
   const trackWidth = 30
   const [wraparoundEnabled, setWraparoundEnabled] = useState(true)
   const [hoverPoint, setHoverPoint] = useState<HoverPoint | null>(null)
+  const lastSimulationInputsRef = useRef<Record<string, number> | null>(null)
 
   const [tooltip, setTooltip] = useState<TooltipState>({
     visible: false,
@@ -269,6 +340,8 @@ function App() {
         setFields(nextFormState.fields)
         setBatteryWh(nextFormState.batteryWh)
         setRaceDayMin(nextFormState.raceDayMin)
+        setAdditionalEfficiency(nextFormState.additionalEfficiency)
+        setTelemetryAdditionalEfficiency(preset.inputs.additionalEfficiency)
         setPresetStatus('')
       } catch (error) {
         console.error('Failed to load default presets', error)
@@ -347,6 +420,19 @@ function App() {
 
     async function loadTelemetry() {
       try {
+        const lastSimulationInputs = lastSimulationInputsRef.current
+        if (lastSimulationInputs) {
+          const data = await postSimulation(lastSimulationInputs, wraparoundEnabled)
+
+          if (isMounted) {
+            setResult(Number(data.distanceM).toFixed(2))
+            setTelemetry(data.points)
+            setTelemetryAdditionalEfficiency(lastSimulationInputs.additionalEfficiency ?? 0)
+            setTrackStatus(formatTrackStatus(data.points.length, wraparoundEnabled))
+          }
+          return
+        }
+
         //pause async func w/o freezing UI until backend response
         const response = await fetch(telemetryUrl(wraparoundEnabled))
         const data = await response.json()
@@ -358,12 +444,14 @@ function App() {
 
         if (isMounted) {
           setTelemetry(data.points)
+          setTrackStatus(formatTrackStatus(data.points.length, wraparoundEnabled))
+        }
+      } catch (error) {
+        if (isMounted) {
           setTrackStatus(
-            `Telemetry points: ${data.points.length} · Wraparound ${wraparoundEnabled ? 'on' : 'off'}`,
+            error instanceof Error ? error.message : 'Unable to reach backend for track telemetry.',
           )
         }
-      } catch {
-        if (isMounted) setTrackStatus('Unable to reach backend for track telemetry.')
       }
     }
 
@@ -387,6 +475,7 @@ function App() {
     setFields(nextFormState.fields)
     setBatteryWh(nextFormState.batteryWh)
     setRaceDayMin(nextFormState.raceDayMin)
+    setAdditionalEfficiency(nextFormState.additionalEfficiency)
   }
 
   const handlePresetReset = () => {
@@ -397,6 +486,7 @@ function App() {
     setFields(nextFormState.fields)
     setBatteryWh(nextFormState.batteryWh)
     setRaceDayMin(nextFormState.raceDayMin)
+    setAdditionalEfficiency(nextFormState.additionalEfficiency)
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -434,23 +524,24 @@ function App() {
       payload[batteryWh.name] = batteryValue
     }
 
+    const effValue = toNumber(additionalEfficiency.value)
+    if (effValue === null || effValue < -100 || effValue > 100) {
+      setStatus(`Invalid value for ${additionalEfficiency.label}. Must be between -100 and 100.`)
+      return
+    }
+    payload[additionalEfficiency.name] = effValue
+
     try {
-      const response = await fetch('http://localhost:8080/distance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      const data = await response.json()
+      const data = await postSimulation(payload, wraparoundEnabled)
 
-      if (!response.ok || !data.ok) {
-        setStatus(data.message || 'Request failed.')
-        return
-      }
-
-      setResult(Number(data.distanceM).toFixed(2))
+      lastSimulationInputsRef.current = payload
+      setResult(data.distanceM.toFixed(2))
+      setTelemetry(data.points)
+      setTelemetryAdditionalEfficiency(effValue)
+      setTrackStatus(formatTrackStatus(data.points.length, wraparoundEnabled))
       setStatus('Success.')
-    } catch {
-      setStatus('Network error. Is the server running?')
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Network error. Is the server running?')
     }
   }
 
@@ -512,7 +603,12 @@ function App() {
             {inputsOpen ? 'Hide inputs' : 'Show inputs'}
           </button>
 
-          <button type="button" className="reset" disabled={!selectedPreset} onClick={handlePresetReset}>
+          <button
+            type="button"
+            className="reset"
+            disabled={!selectedPreset}
+            onClick={handlePresetReset}
+          >
             Reset to preset
           </button>
         </div>
@@ -540,6 +636,21 @@ function App() {
               value={raceDayMin.value}
               onChange={(event) =>
                 setRaceDayMin((prev) => ({ ...prev, value: event.target.value }))
+              }
+            />
+          </label>
+
+          <label>
+            {additionalEfficiency.label}
+            <input
+              type="number"
+              step={additionalEfficiency.step}
+              min={additionalEfficiency.min}
+              max={additionalEfficiency.max}
+              name={additionalEfficiency.name}
+              value={additionalEfficiency.value}
+              onChange={(event) =>
+                setAdditionalEfficiency((prev) => ({ ...prev, value: event.target.value }))
               }
             />
           </label>
@@ -675,7 +786,10 @@ function App() {
           </div>
         ) : null}
         <div style={{ marginTop: 12 }}>
-          <TelemetryGraph telemetry={telemetry} />
+          <TelemetryGraph
+            telemetry={telemetry}
+            additionalEfficiency={telemetryAdditionalEfficiency}
+          />
         </div>
       </section>
 
