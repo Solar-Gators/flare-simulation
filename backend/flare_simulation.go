@@ -23,7 +23,7 @@ func runSimulation() {
 	etaDrive := inputs.EtaDrive
 	raceDayMin := inputs.RaceDayMin
 	gmax := inputs.Gmax
-	additionalEfficiency = 0.0
+	additionalEfficiency := inputs.AdditionalEfficiency
 
 	/*solarYield := 0.0
 	maxSpeed := 50.0

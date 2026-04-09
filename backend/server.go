@@ -178,7 +178,8 @@ func simulateHandler(w http.ResponseWriter, r *http.Request) {
 func validateSimulationInputs(req simulationInputs) error {
 	if req.V <= 0 || req.BatteryWh <= 0 || req.EtaDrive <= 0 || req.RaceDayMin <= 0 ||
 		req.RWheel <= 0 || req.Tmax <= 0 || req.Pmax <= 0 || req.M <= 0 || req.G <= 0 ||
-		req.Crr < 0 || req.Rho <= 0 || req.Cd <= 0 || req.A <= 0 || req.Gmax <= 0 {
+		req.Crr < 0 || req.Rho <= 0 || req.Cd <= 0 || req.A <= 0 || req.Gmax <= 0 ||
+		req.AdditionalEfficiency < -100 || req.AdditionalEfficiency > 100 {
 		return fmt.Errorf("missing or invalid input values")
 	}
 	return nil
@@ -189,7 +190,7 @@ func distanceForInputs(req simulationInputs) (float64, bool) {
 		req.V,
 		req.BatteryWh, req.SolarWhPerMin, req.EtaDrive, req.RaceDayMin,
 		req.RWheel, req.Tmax, req.Pmax,
-		req.M, req.G, req.Crr, req.Rho, req.Cd, req.A, req.Theta,
+		req.M, req.G, req.Crr, req.Rho, req.Cd, req.A, req.Theta, req.AdditionalEfficiency,
 	)
 }
 
@@ -443,18 +444,6 @@ func buildTelemetryOneLapWithWraparoundForInputs(
 		muTire   = 0.9
 		maxSpeed = 40.0
 		vMin     = 0.5
-		A        = 0.456
-		Cd       = 0.21
-		rho      = 1.225
-		Crr      = 0.0015
-		m        = 285.0
-		g        = 9.81
-		theta    = 0.0
-		rWheel   = 0.2792
-		Tmax     = 45.0
-		Pmax     = 10000.0
-		etaDrive = 0.90
-		additionalEfficiency = 0.00
 	)
 
 	track := telemetryTrackFromSegments(segments)
@@ -477,7 +466,7 @@ func buildTelemetryOneLapWithWraparoundForInputs(
 		inputs.Cd,
 		inputs.A,
 		inputs.Theta,
-		inputs.additionalEfficiency
+		inputs.AdditionalEfficiency,
 	)
 	if err != nil {
 		return nil, err
@@ -525,6 +514,7 @@ func buildTelemetryOneLapWithWraparoundForInputs(
 						inputs.Cd,
 						inputs.A,
 						inputs.Theta,
+						inputs.AdditionalEfficiency,
 					)
 					a = math.Max(aCoast, -aLongMax)
 				} else {
@@ -542,6 +532,7 @@ func buildTelemetryOneLapWithWraparoundForInputs(
 						inputs.Cd,
 						inputs.A,
 						inputs.Theta,
+						inputs.AdditionalEfficiency,
 					)
 					a = math.Min(aPower, aLongMax)
 				}
@@ -629,6 +620,7 @@ func buildTelemetryOneLapWithWraparoundForInputs(
 						inputs.Cd,
 						inputs.A,
 						inputs.Theta,
+						inputs.AdditionalEfficiency,
 					)
 					a = math.Max(aCoast, -aLongMax)
 				} else {
@@ -646,6 +638,7 @@ func buildTelemetryOneLapWithWraparoundForInputs(
 						inputs.Cd,
 						inputs.A,
 						inputs.Theta,
+						inputs.AdditionalEfficiency,
 					)
 					a = math.Min(aPower, aLongMax)
 				}
@@ -878,6 +871,7 @@ func computeOptimalSpeed() float64 {
 			inputs.Cd,
 			inputs.A,
 			inputs.Theta,
+			inputs.AdditionalEfficiency,
 		); ok && d > bestD {
 			bestD, bestV = d, v
 		}
@@ -900,6 +894,7 @@ func computeOptimalSpeed() float64 {
 			inputs.Cd,
 			inputs.A,
 			inputs.Theta,
+			inputs.AdditionalEfficiency,
 		); ok && d > bestD {
 			bestD, bestV = d, v
 		}

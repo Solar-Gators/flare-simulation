@@ -41,3 +41,29 @@ func TestSimulateHandlerReturnsDistanceAndTelemetry(t *testing.T) {
 		t.Fatal("expected telemetry points")
 	}
 }
+
+func TestDistanceForInputsUsesAdditionalEfficiency(t *testing.T) {
+	base := defaultSimulationInputs()
+	base.BatteryWh = 100
+	base.AdditionalEfficiency = 0
+
+	penalized := base
+	penalized.AdditionalEfficiency = 10
+
+	baseDistance, ok := distanceForInputs(base)
+	if !ok {
+		t.Fatal("expected base distance calculation to be feasible")
+	}
+	penalizedDistance, ok := distanceForInputs(penalized)
+	if !ok {
+		t.Fatal("expected penalized distance calculation to be feasible")
+	}
+
+	if penalizedDistance >= baseDistance {
+		t.Fatalf(
+			"got penalized distance %.6f, want less than base distance %.6f",
+			penalizedDistance,
+			baseDistance,
+		)
+	}
+}

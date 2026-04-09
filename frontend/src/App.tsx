@@ -60,19 +60,19 @@ type FieldDef = {
 
 // input fields for distance calculator (no solarWhPerMin, no raceDayMin, no batteryWh here)
 const initialFields: FieldDef[] = [
-  { name: 'v', label: 'Baseline Velocity (m/s)', step: '0.1', value: '20' },
-  { name: 'etaDrive', label: 'Drivetrain Efficiency (%)', step: '0.01', value: '0.9' },
-  { name: 'rWheel', label: 'Wheel Radius (m)', step: '0.0001', value: '0.2792' },
-  { name: 'tMax', label: 'Max Motor Torque (N·m)', step: '0.1', value: '45' },
-  { name: 'pMax', label: 'Max Motor Power (W)', step: '1', value: '10000' },
-  { name: 'm', label: 'Mass (kg)', step: '0.1', value: '285' },
-  { name: 'g', label: 'Gravity (m/s^2)', step: '0.01', value: '9.81' },
-  { name: 'cRr', label: 'Rolling Resistance Coefficient', step: '0.0001', value: '0.0015' },
-  { name: 'rho', label: 'rho', step: '0.001', value: '1.225' },
-  { name: 'cD', label: 'Drag Coefficient', step: '0.01', value: '0.21' },
-  { name: 'a', label: 'Frontal Area (m^2)', step: '0.001', value: '0.456' },
-  { name: 'theta', label: 'Track Grade (rad)', step: '0.001', value: '0' },
-  { name: 'gmax', label: 'Lateral G-force Limit', step: '0.01', value: '1.00' },
+  { name: 'v', label: 'Baseline Velocity (m/s)', step: '0.1', value: '' },
+  { name: 'etaDrive', label: 'Drivetrain Efficiency (%)', step: '0.01', value: '' },
+  { name: 'rWheel', label: 'Wheel Radius (m)', step: '0.0001', value: '' },
+  { name: 'tMax', label: 'Max Motor Torque (N·m)', step: '0.1', value: '' },
+  { name: 'pMax', label: 'Max Motor Power (W)', step: '1', value: '' },
+  { name: 'm', label: 'Mass (kg)', step: '0.1', value: '' },
+  { name: 'g', label: 'Gravity (m/s^2)', step: '0.01', value: '' },
+  { name: 'cRr', label: 'Rolling Resistance Coefficient', step: '0.0001', value: '' },
+  { name: 'rho', label: 'rho', step: '0.001', value: '' },
+  { name: 'cD', label: 'Drag Coefficient', step: '0.01', value: '' },
+  { name: 'a', label: 'Frontal Area (m^2)', step: '0.001', value: '' },
+  { name: 'theta', label: 'Track Grade (rad)', step: '0.001', value: '' },
+  { name: 'gmax', label: 'Lateral G-force Limit', step: '0.01', value: '' },
 ]
 
 const ABS_COLOR_MIN_SPEED = 0.0
@@ -116,75 +116,86 @@ const initialRaceDayMin: FieldDef = {
   name: 'raceDayMin',
   label: 'Race Day Time (min)',
   step: '1',
-  value: '480',
+  value: '',
 }
 const initialBatteryWh: FieldDef = {
   name: 'batteryWh',
   label: 'Battery Power (Wh)',
   step: '1',
-  value: '5000',
+  value: '',
 }
 const initialAdditionalEfficiency: FieldDef = {
   name: 'additionalEfficiency',
   label: 'Additional Efficiency (%)',
   step: '1',
-  value: '0.00',
+  value: '',
   min: '-100.00',
   max: '100.00',
 }
 
-type VehiclePreset = {
-  id: string
-  label: string
-  fields: FieldDef[]
-  outside?: Partial<Record<'batteryWh' | 'raceDayMin', string>>
+function createBlankField(field: FieldDef): FieldDef {
+  return { ...field }
 }
 
-const VEHICLE_PRESETS: VehiclePreset[] = [
-  {
-    id: 'flare-default',
-    label: 'Flare (default)',
-    fields: initialFields,
-    outside: { batteryWh: '5000', raceDayMin: '480' },
-  },
-  {
-    id: 'lexus-gs350-awd',
-    label: '2008 Lexus GS350 AWD (215/55R17 road tires)',
-    outside: { batteryWh: '656000', raceDayMin: '480' },
-    fields: initialFields.map((f) => {
-      switch (f.name) {
-        case 'v':
-          return { ...f, value: '20' }
-        case 'etaDrive':
-          return { ...f, value: '0.22' }
-        case 'rWheel':
-          return { ...f, value: '0.334' }
-        case 'tMax':
-          return { ...f, value: '5725' }
-        case 'pMax':
-          return { ...f, value: '880000' }
-        case 'm':
-          return { ...f, value: '1840' }
-        case 'g':
-          return { ...f, value: '9.81' }
-        case 'cRr':
-          return { ...f, value: '0.010' }
-        case 'rho':
-          return { ...f, value: '1.225' }
-        case 'cD':
-          return { ...f, value: '0.27' }
-        case 'a':
-          return { ...f, value: '2.2' }
-        case 'theta':
-          return { ...f, value: '0' }
-        case 'gmax':
-          return { ...f, value: '0.88', min: f.min ?? '0.1', max: f.max ?? '2.0' }
-        default:
-          return f
-      }
-    }),
-  },
-]
+function createBlankFields(): FieldDef[] {
+  return initialFields.map((field) => createBlankField(field))
+}
+
+function createFieldFromValue(field: FieldDef, value: number): FieldDef {
+  return { ...field, value: String(value) }
+}
+
+function createFieldsFromInputs(inputs: SimulationInputs): FieldDef[] {
+  return initialFields.map((field) => {
+    switch (field.name) {
+      case 'v':
+        return createFieldFromValue(field, inputs.v)
+      case 'etaDrive':
+        return createFieldFromValue(field, inputs.etaDrive)
+      case 'rWheel':
+        return createFieldFromValue(field, inputs.rWheel)
+      case 'tMax':
+        return createFieldFromValue(field, inputs.tMax)
+      case 'pMax':
+        return createFieldFromValue(field, inputs.pMax)
+      case 'm':
+        return createFieldFromValue(field, inputs.m)
+      case 'g':
+        return createFieldFromValue(field, inputs.g)
+      case 'cRr':
+        return createFieldFromValue(field, inputs.cRr)
+      case 'rho':
+        return createFieldFromValue(field, inputs.rho)
+      case 'cD':
+        return createFieldFromValue(field, inputs.cD)
+      case 'a':
+        return createFieldFromValue(field, inputs.a)
+      case 'theta':
+        return createFieldFromValue(field, inputs.theta)
+      case 'gmax':
+        return createFieldFromValue(field, inputs.gmax)
+      default:
+        return createBlankField(field)
+    }
+  })
+}
+
+function createFormStateFromInputs(inputs: SimulationInputs): {
+  fields: FieldDef[]
+  batteryWh: FieldDef
+  raceDayMin: FieldDef
+  additionalEfficiency: FieldDef
+} {
+  return {
+    fields: createFieldsFromInputs(inputs),
+    batteryWh: createFieldFromValue(initialBatteryWh, inputs.batteryWh),
+    raceDayMin: createFieldFromValue(initialRaceDayMin, inputs.raceDayMin),
+    additionalEfficiency: createFieldFromValue(
+      initialAdditionalEfficiency,
+      inputs.additionalEfficiency,
+    ),
+  }
+}
 
 function toNumber(value: string): number | null {
   const num = Number.parseFloat(value)
@@ -275,14 +286,15 @@ function App() {
 
   const [fields, setFields] = useState<FieldDef[]>(() => createBlankFields())
 
-  const [raceDayMin, setRaceDayMin] = useState<FieldDef>(() => createBlankField(raceDayMinTemplate))
-  const [batteryWh, setBatteryWh] = useState<FieldDef>(() => createBlankField(batteryWhTemplate))
+  const [raceDayMin, setRaceDayMin] = useState<FieldDef>(() => createBlankField(initialRaceDayMin))
+  const [batteryWh, setBatteryWh] = useState<FieldDef>(() => createBlankField(initialBatteryWh))
   const [presets, setPresets] = useState<SimulationPreset[]>([])
   const [selectedPresetId, setSelectedPresetId] = useState('')
   const [presetStatus, setPresetStatus] = useState('Loading presets...')
   const [additionalEfficiency, setAdditionalEfficiency] = useState<FieldDef>(() => ({
     ...initialAdditionalEfficiency,
   }))
+  const [telemetryAdditionalEfficiency, setTelemetryAdditionalEfficiency] = useState(0)
 
   const [result, setResult] = useState('--')
   const [status, setStatus] = useState('')
@@ -328,6 +340,8 @@ function App() {
         setFields(nextFormState.fields)
         setBatteryWh(nextFormState.batteryWh)
         setRaceDayMin(nextFormState.raceDayMin)
+        setAdditionalEfficiency(nextFormState.additionalEfficiency)
+        setTelemetryAdditionalEfficiency(preset.inputs.additionalEfficiency)
         setPresetStatus('')
       } catch (error) {
         console.error('Failed to load default presets', error)
@@ -413,6 +427,7 @@ function App() {
           if (isMounted) {
             setResult(Number(data.distanceM).toFixed(2))
             setTelemetry(data.points)
+            setTelemetryAdditionalEfficiency(lastSimulationInputs.additionalEfficiency ?? 0)
             setTrackStatus(formatTrackStatus(data.points.length, wraparoundEnabled))
           }
           return
@@ -460,6 +475,7 @@ function App() {
     setFields(nextFormState.fields)
     setBatteryWh(nextFormState.batteryWh)
     setRaceDayMin(nextFormState.raceDayMin)
+    setAdditionalEfficiency(nextFormState.additionalEfficiency)
   }
 
   const handlePresetReset = () => {
@@ -470,6 +486,7 @@ function App() {
     setFields(nextFormState.fields)
     setBatteryWh(nextFormState.batteryWh)
     setRaceDayMin(nextFormState.raceDayMin)
+    setAdditionalEfficiency(nextFormState.additionalEfficiency)
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -520,6 +537,7 @@ function App() {
       lastSimulationInputsRef.current = payload
       setResult(data.distanceM.toFixed(2))
       setTelemetry(data.points)
+      setTelemetryAdditionalEfficiency(effValue)
       setTrackStatus(formatTrackStatus(data.points.length, wraparoundEnabled))
       setStatus('Success.')
     } catch (error) {
@@ -768,7 +786,10 @@ function App() {
           </div>
         ) : null}
         <div style={{ marginTop: 12 }}>
-          <TelemetryGraph telemetry={telemetry} />
+          <TelemetryGraph
+            telemetry={telemetry}
+            additionalEfficiency={telemetryAdditionalEfficiency}
+          />
         </div>
       </section>
 
