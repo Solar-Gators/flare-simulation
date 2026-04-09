@@ -58,24 +58,21 @@ type FieldDef = {
   max?: string
 }
 
-type FieldTemplate = Omit<FieldDef, 'value'>
-
-// UI field definitions live here, but the numeric defaults now live only in the backend.
-const fieldTemplates: FieldTemplate[] = [
-  { name: 'v', label: 'v (m/s)', step: '0.1' },
-  { name: 'solarWhPerMin', label: 'solarWhPerMin', step: '0.1' },
-  { name: 'etaDrive', label: 'etaDrive', step: '0.01' },
-  { name: 'rWheel', label: 'rWheel (m)', step: '0.0001' },
-  { name: 'tMax', label: 'tMax (N·m)', step: '0.1' },
-  { name: 'pMax', label: 'pMax (W)', step: '1' },
-  { name: 'm', label: 'm (kg)', step: '0.1' },
-  { name: 'g', label: 'g (m/s^2)', step: '0.01' },
-  { name: 'cRr', label: 'cRr', step: '0.0001' },
-  { name: 'rho', label: 'rho', step: '0.001' },
-  { name: 'cD', label: 'cD', step: '0.01' },
-  { name: 'a', label: 'a (m^2)', step: '0.001' },
-  { name: 'theta', label: 'theta (rad)', step: '0.001' },
-  { name: 'gmax', label: 'gmax (lateral g limit)', step: '0.01', min: '0.1', max: '2.0' },
+// input fields for distance calculator (no solarWhPerMin, no raceDayMin, no batteryWh here)
+const initialFields: FieldDef[] = [
+  { name: 'v', label: 'Baseline Velocity (m/s)', step: '0.1', value: '20' },
+  { name: 'etaDrive', label: 'Drivetrain Efficiency (%)', step: '0.01', value: '0.9' },
+  { name: 'rWheel', label: 'Wheel Radius (m)', step: '0.0001', value: '0.2792' },
+  { name: 'tMax', label: 'Max Motor Torque (N·m)', step: '0.1', value: '45' },
+  { name: 'pMax', label: 'Max Motor Power (W)', step: '1', value: '10000' },
+  { name: 'm', label: 'Mass (kg)', step: '0.1', value: '285' },
+  { name: 'g', label: 'Gravity (m/s^2)', step: '0.01', value: '9.81' },
+  { name: 'cRr', label: 'Rolling Resistance Coefficient', step: '0.0001', value: '0.0015' },
+  { name: 'rho', label: 'rho', step: '0.001', value: '1.225' },
+  { name: 'cD', label: 'Drag Coefficient', step: '0.01', value: '0.21' },
+  { name: 'a', label: 'Frontal Area (m^2)', step: '0.001', value: '0.456' },
+  { name: 'theta', label: 'Track Grade (rad)', step: '0.001', value: '0' },
+  { name: 'gmax', label: 'Lateral G-force Limit', step: '0.01', value: '1.00' },
 ]
 
 const ABS_COLOR_MIN_SPEED = 0.0
@@ -85,6 +82,7 @@ const ABS_COLOR_TICKS = [0, 6, 12, 18, 24] as const
 const DISTANCE_FIELD_NAMES = new Set([
   'v',
   'batteryWh',
+  'additionalEfficiency',
   'solarWhPerMin',
   'etaDrive',
   'raceDayMin',
@@ -113,69 +111,80 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
 }
 
-const raceDayMinTemplate: FieldTemplate = { name: 'raceDayMin', label: 'raceDayMin', step: '1' }
-const batteryWhTemplate: FieldTemplate = { name: 'batteryWh', label: 'batteryWh', step: '1' }
-
-function createBlankField(field: FieldTemplate): FieldDef {
-  return { ...field, value: '' }
+// independent fields (outside the expandable inputs)
+const initialRaceDayMin: FieldDef = {
+  name: 'raceDayMin',
+  label: 'Race Day Time (min)',
+  step: '1',
+  value: '480',
+}
+const initialBatteryWh: FieldDef = {
+  name: 'batteryWh',
+  label: 'Battery Power (Wh)',
+  step: '1',
+  value: '5000',
+}
+const initialAdditionalEfficiency: FieldDef = {
+  name: 'additionalEfficiency',
+  label: 'Additional Efficiency (%)',
+  step: '1',
+  value: '0.00',
+  min: '-100.00',
+  max: '100.00',
 }
 
-function createBlankFields(): FieldDef[] {
-  return fieldTemplates.map((field) => createBlankField(field))
-}
-
-function createFieldFromValue(field: FieldTemplate, value: number): FieldDef {
-  return { ...field, value: String(value) }
-}
-
-function createFieldsFromInputs(inputs: SimulationInputs): FieldDef[] {
-  return fieldTemplates.map((field) => {
-    switch (field.name) {
-      case 'v':
-        return createFieldFromValue(field, inputs.v)
-      case 'solarWhPerMin':
-        return createFieldFromValue(field, inputs.solarWhPerMin)
-      case 'etaDrive':
-        return createFieldFromValue(field, inputs.etaDrive)
-      case 'rWheel':
-        return createFieldFromValue(field, inputs.rWheel)
-      case 'tMax':
-        return createFieldFromValue(field, inputs.tMax)
-      case 'pMax':
-        return createFieldFromValue(field, inputs.pMax)
-      case 'm':
-        return createFieldFromValue(field, inputs.m)
-      case 'g':
-        return createFieldFromValue(field, inputs.g)
-      case 'cRr':
-        return createFieldFromValue(field, inputs.cRr)
-      case 'rho':
-        return createFieldFromValue(field, inputs.rho)
-      case 'cD':
-        return createFieldFromValue(field, inputs.cD)
-      case 'a':
-        return createFieldFromValue(field, inputs.a)
-      case 'theta':
-        return createFieldFromValue(field, inputs.theta)
-      case 'gmax':
-        return createFieldFromValue(field, inputs.gmax)
-      default:
-        return createBlankField(field)
-    }
-  })
-}
-
-function createFormStateFromInputs(inputs: SimulationInputs): {
+type VehiclePreset = {
+  id: string
+  label: string
   fields: FieldDef[]
-  batteryWh: FieldDef
-  raceDayMin: FieldDef
-} {
-  return {
-    fields: createFieldsFromInputs(inputs),
-    batteryWh: createFieldFromValue(batteryWhTemplate, inputs.batteryWh),
-    raceDayMin: createFieldFromValue(raceDayMinTemplate, inputs.raceDayMin),
-  }
+  outside?: Partial<Record<'batteryWh' | 'raceDayMin', string>>
 }
+
+const VEHICLE_PRESETS: VehiclePreset[] = [
+  {
+    id: 'flare-default',
+    label: 'Flare (default)',
+    fields: initialFields,
+    outside: { batteryWh: '5000', raceDayMin: '480' },
+  },
+  {
+    id: 'lexus-gs350-awd',
+    label: '2008 Lexus GS350 AWD (215/55R17 road tires)',
+    outside: { batteryWh: '656000', raceDayMin: '480' },
+    fields: initialFields.map((f) => {
+      switch (f.name) {
+        case 'v':
+          return { ...f, value: '20' }
+        case 'etaDrive':
+          return { ...f, value: '0.22' }
+        case 'rWheel':
+          return { ...f, value: '0.334' }
+        case 'tMax':
+          return { ...f, value: '5725' }
+        case 'pMax':
+          return { ...f, value: '880000' }
+        case 'm':
+          return { ...f, value: '1840' }
+        case 'g':
+          return { ...f, value: '9.81' }
+        case 'cRr':
+          return { ...f, value: '0.010' }
+        case 'rho':
+          return { ...f, value: '1.225' }
+        case 'cD':
+          return { ...f, value: '0.27' }
+        case 'a':
+          return { ...f, value: '2.2' }
+        case 'theta':
+          return { ...f, value: '0' }
+        case 'gmax':
+          return { ...f, value: '0.88', min: f.min ?? '0.1', max: f.max ?? '2.0' }
+        default:
+          return f
+      }
+    }),
+  },
+]
 
 function toNumber(value: string): number | null {
   const num = Number.parseFloat(value)
@@ -271,6 +280,9 @@ function App() {
   const [presets, setPresets] = useState<SimulationPreset[]>([])
   const [selectedPresetId, setSelectedPresetId] = useState('')
   const [presetStatus, setPresetStatus] = useState('Loading presets...')
+  const [additionalEfficiency, setAdditionalEfficiency] = useState<FieldDef>(() => ({
+    ...initialAdditionalEfficiency,
+  }))
 
   const [result, setResult] = useState('--')
   const [status, setStatus] = useState('')
@@ -495,6 +507,13 @@ function App() {
       payload[batteryWh.name] = batteryValue
     }
 
+    const effValue = toNumber(additionalEfficiency.value)
+    if (effValue === null || effValue < -100 || effValue > 100) {
+      setStatus(`Invalid value for ${additionalEfficiency.label}. Must be between -100 and 100.`)
+      return
+    }
+    payload[additionalEfficiency.name] = effValue
+
     try {
       const data = await postSimulation(payload, wraparoundEnabled)
 
@@ -566,7 +585,12 @@ function App() {
             {inputsOpen ? 'Hide inputs' : 'Show inputs'}
           </button>
 
-          <button type="button" className="reset" disabled={!selectedPreset} onClick={handlePresetReset}>
+          <button
+            type="button"
+            className="reset"
+            disabled={!selectedPreset}
+            onClick={handlePresetReset}
+          >
             Reset to preset
           </button>
         </div>
@@ -594,6 +618,21 @@ function App() {
               value={raceDayMin.value}
               onChange={(event) =>
                 setRaceDayMin((prev) => ({ ...prev, value: event.target.value }))
+              }
+            />
+          </label>
+
+          <label>
+            {additionalEfficiency.label}
+            <input
+              type="number"
+              step={additionalEfficiency.step}
+              min={additionalEfficiency.min}
+              max={additionalEfficiency.max}
+              name={additionalEfficiency.name}
+              value={additionalEfficiency.value}
+              onChange={(event) =>
+                setAdditionalEfficiency((prev) => ({ ...prev, value: event.target.value }))
               }
             />
           </label>

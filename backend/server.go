@@ -443,6 +443,18 @@ func buildTelemetryOneLapWithWraparoundForInputs(
 		muTire   = 0.9
 		maxSpeed = 40.0
 		vMin     = 0.5
+		A        = 0.456
+		Cd       = 0.21
+		rho      = 1.225
+		Crr      = 0.0015
+		m        = 285.0
+		g        = 9.81
+		theta    = 0.0
+		rWheel   = 0.2792
+		Tmax     = 45.0
+		Pmax     = 10000.0
+		etaDrive = 0.90
+		additionalEfficiency = 0.00
 	)
 
 	track := telemetryTrackFromSegments(segments)
@@ -465,6 +477,7 @@ func buildTelemetryOneLapWithWraparoundForInputs(
 		inputs.Cd,
 		inputs.A,
 		inputs.Theta,
+		inputs.additionalEfficiency
 	)
 	if err != nil {
 		return nil, err
@@ -691,15 +704,16 @@ func buildTelemetryProfiles(
 	Cd float64,
 	A float64,
 	theta float64,
+	additionalEfficiency float64,
 ) (profileSet, error) {
 	samples := sampleTrackMeters(track, stepM, g, gmax)
 	if !wraparound || len(samples) == 0 {
-		return buildProfiles(samples, cruiseCap, maxBrakeMPS2, vMin, m, g, Crr, rho, Cd, A, theta), nil
+		return buildProfiles(samples, cruiseCap, maxBrakeMPS2, vMin, m, g, Crr, rho, Cd, A, theta, additionalEfficiency), nil
 	}
 
 	wrappedTrack := repeatTrack(track, telemetryWrapProfileLaps)
 	wrappedSamples := sampleTrackMeters(wrappedTrack, stepM, g, gmax)
-	wrappedProfiles := buildProfiles(wrappedSamples, cruiseCap, maxBrakeMPS2, vMin, m, g, Crr, rho, Cd, A, theta)
+	wrappedProfiles := buildProfiles(wrappedSamples, cruiseCap, maxBrakeMPS2, vMin, m, g, Crr, rho, Cd, A, theta, additionalEfficiency)
 
 	oneLapCount := len(samples)
 	start := oneLapCount
@@ -798,6 +812,7 @@ func accelAtSpeed(
 	Cd float64,
 	A float64,
 	theta float64,
+	additionalEfficiency float64,
 ) float64 {
 	vEff := math.Max(v, vMin)
 	pAvail := WheelPowerEV(v, Tmax, Pmax, rWheel, etaDrive)
@@ -805,7 +820,7 @@ func accelAtSpeed(
 	if v < vMin && rWheel > 0 {
 		fDrive = Tmax / rWheel
 	}
-	pRes := PowerRequired(v, m, g, Crr, rho, Cd, A, theta)
+	pRes := PowerRequired(v, m, g, Crr, rho, Cd, A, theta, additionalEfficiency)
 	fRes := pRes / vEff
 	return (fDrive - fRes) / m
 }
@@ -833,9 +848,10 @@ func coastDecel(
 	Cd float64,
 	A float64,
 	theta float64,
+	additionalEfficiency float64,
 ) float64 {
 	vEff := math.Max(v, vMin)
-	pRes := PowerRequired(v, m, g, Crr, rho, Cd, A, theta)
+	pRes := PowerRequired(v, m, g, Crr, rho, Cd, A, theta, additionalEfficiency)
 	fRes := pRes / vEff
 	return -fRes / m
 }
