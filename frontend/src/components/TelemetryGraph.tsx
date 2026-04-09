@@ -19,6 +19,7 @@ type TPoint = {
 
 type Props = {
   telemetry: TPoint[]
+  additionalEfficiency: number
 }
 
 type ChartPoint = {
@@ -28,7 +29,7 @@ type ChartPoint = {
   energy: number
 }
 
-function powerRequired(v: number) {
+function powerRequired(v: number, additionalEfficiency: number) {
   const m = 285.0
   const g = 9.81
   const Crr = 0.0015
@@ -38,16 +39,60 @@ function powerRequired(v: number) {
   const theta = 0.0
   const fRolling = (Crr * m * g + m * g * Math.sin(theta)) * v
   const pAero = 0.5 * rho * Cd * A * v * v * v
-  return fRolling + pAero
+  return (fRolling + pAero) * (1 + additionalEfficiency / 100)
 }
 
-function energyWhPerMeter(v: number) {
+function energyWhPerMeter(v: number, additionalEfficiency: number) {
   if (v <= 0) return 0
-  const P = powerRequired(v)
+  const P = powerRequired(v, additionalEfficiency)
   return P / (v * 3600)
 }
 
-export default function TelemetryGraph({ telemetry }: Props) {
+function binTelemetry(
+  points: TPoint[],
+  additionalEfficiency: number,
+  binSize = 100,
+): ChartPoint[] {
+  if (points.length === 0) return []
+  const bins = new Map<
+    number,
+    { count: number; sumDist: number; sumSpeed: number; sumAccel: number; sumEnergy: number }
+  >()
+  for (const p of points) {
+    const binKey = Math.floor(p.distance / binSize)
+    const existing = bins.get(binKey)
+    const e = energyWhPerMeter(p.speed, additionalEfficiency)
+    if (existing) {
+      existing.count += 1
+      existing.sumDist += p.distance
+      existing.sumSpeed += p.speed
+      existing.sumAccel += p.accel
+      existing.sumEnergy += e
+    } else {
+      bins.set(binKey, {
+        count: 1,
+        sumDist: p.distance,
+        sumSpeed: p.speed,
+        sumAccel: p.accel,
+        sumEnergy: e,
+      })
+    }
+  }
+  const out: ChartPoint[] = []
+  const keys = Array.from(bins.keys()).sort((a, b) => a - b)
+  for (const k of keys) {
+    const v = bins.get(k)!
+    out.push({
+      distance: v.sumDist / v.count,
+      speed: v.sumSpeed / v.count,
+      accel: v.sumAccel / v.count,
+      energy: v.sumEnergy / v.count,
+    })
+  }
+  return out
+}
+
+export default function TelemetryGraph({ telemetry, additionalEfficiency }: Props) {
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [showAll, setShowAll] = useState(false)
   const [normalize100, setNormalize100] = useState(false)
@@ -60,33 +105,6 @@ export default function TelemetryGraph({ telemetry }: Props) {
     }),
     [],
   )
-
-  // bin telemetry into chart-friendly points (optionally normalized by 100 m bins)
-  function binTelemetry(points: TPoint[], binSize = 100): ChartPoint[] {
-    if (points.length === 0) return []
-    const bins = new Map<number, { count: number; sumDist: number; sumSpeed: number; sumAccel: number; sumEnergy: number }>()
-    for (const p of points) {
-      const binKey = Math.floor(p.distance / binSize)
-      const existing = bins.get(binKey)
-      const e = energyWhPerMeter(p.speed)
-      if (existing) {
-        existing.count += 1
-        existing.sumDist += p.distance
-        existing.sumSpeed += p.speed
-        existing.sumAccel += p.accel
-        existing.sumEnergy += e
-      } else {
-        bins.set(binKey, { count: 1, sumDist: p.distance, sumSpeed: p.speed, sumAccel: p.accel, sumEnergy: e })
-      }
-    }
-    const out: ChartPoint[] = []
-    const keys = Array.from(bins.keys()).sort((a, b) => a - b)
-    for (const k of keys) {
-      const v = bins.get(k)!
-      out.push({ distance: v.sumDist / v.count, speed: v.sumSpeed / v.count, accel: v.sumAccel / v.count, energy: v.sumEnergy / v.count })
-    }
-    return out
-  }
 
   const windowPoints = useMemo(() => {
     if (telemetry.length === 0) return [] as ChartPoint[]
@@ -103,12 +121,12 @@ export default function TelemetryGraph({ telemetry }: Props) {
     }
 
     if (normalize100) {
-      return binTelemetry(base, 100)
+      return binTelemetry(base, additionalEfficiency, 100)
     }
 
     // map to ChartPoint with per-point energy
-    return base.map((p) => ({ distance: p.distance, speed: p.speed, accel: p.accel, energy: energyWhPerMeter(p.speed) }))
-  }, [telemetry, selectedIndex, showAll, normalize100])
+    return base.map((p) => ({ distance: p.distance, speed: p.speed, accel: p.accel, energy: energyWhPerMeter(p.speed, additionalEfficiency) }))
+  }, [telemetry, selectedIndex, showAll, normalize100, additionalEfficiency])
 
   return (
     <div style={{ fontFamily: 'system-ui, Arial' }}>

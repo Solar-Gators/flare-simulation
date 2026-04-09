@@ -9,41 +9,34 @@ import (
 	//used for decoding JSON into distanceRequest struct
 	//also for encoding struct back into JSON format for HTTP response
 	"encoding/json"
+	"strconv"
+
 	//allows for original sim to be called via terminal using flag
 	"flag"
 	"fmt"
 	"log"
 	"math"
 	"net/http" //lets go program talk over web --> Receive requests and send responses
-	"strconv"
 )
 
-type distanceRequest struct {
-	//these are all struct tags
-	//tells go how struct maps to JSON for encoding and decoding
-
-	V             float64 `json:"v"`
-	BatteryWh     float64 `json:"batteryWh"`
-	SolarWhPerMin float64 `json:"solarWhPerMin"`
-	EtaDrive      float64 `json:"etaDrive"`
-	RaceDayMin    float64 `json:"raceDayMin"`
-	RWheel        float64 `json:"rWheel"`
-	Tmax          float64 `json:"tMax"`
-	Pmax          float64 `json:"pMax"`
-	M             float64 `json:"m"`
-	G             float64 `json:"g"`
-	Crr           float64 `json:"cRr"`
-	Rho           float64 `json:"rho"`
-	Cd            float64 `json:"cD"`
-	A             float64 `json:"a"`
-	Theta         float64 `json:"theta"`
-	AdditionalEfficiency    float64 `json:"additionalEfficiency"`
-}
+type distanceRequest = simulationInputs
 
 type distanceResponse struct {
 	DistanceM float64 `json:"distanceM"`
 	OK        bool    `json:"ok"`
 	Message   string  `json:"message,omitempty"`
+}
+
+type simulateRequest struct {
+	Inputs     simulationInputs `json:"inputs"`
+	Wraparound bool             `json:"wraparound"`
+}
+
+type simulateResponse struct {
+	DistanceM float64          `json:"distanceM"`
+	Points    []telemetryPoint `json:"points"`
+	OK        bool             `json:"ok"`
+	Message   string           `json:"message,omitempty"`
 }
 
 type trackSegment struct {
@@ -87,8 +80,10 @@ func main() {
 	//find cruise speed
 	optimalCruiseSpeed = computeOptimalSpeed()
 	//empty router (router is meant to map url to handler)
-	mux := http.NewServeMux()                    //request router (empty --> no route to go), serve multiplexer -->takes http requests and routes it
+	mux := http.NewServeMux() //request router (empty --> no route to go), serve multiplexer -->takes http requests and routes it
+	mux.HandleFunc("/defaults", defaultsHandler)
 	mux.HandleFunc("/distance", distanceHandler) // handler that router directs oncoming requests
+	mux.HandleFunc("/simulate", simulateHandler)
 	mux.HandleFunc("/track", trackHandler)
 	mux.HandleFunc("/track/telemetry", trackTelemetryHandler)
 
@@ -116,33 +111,101 @@ func distanceHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req distanceRequest        // holds parsed JSON
-	dec := json.NewDecoder(r.Body) //decode JSON and read
-	dec.DisallowUnknownFields()    //decoding will fail if JSON has fields that are not valid
+	req := defaultSimulationInputs() // prefill with backend defaults, then let JSON override provided fields
+	dec := json.NewDecoder(r.Body)   //decode JSON and read
+	dec.DisallowUnknownFields()      //decoding will fail if JSON has fields that are not valid
 	if err := dec.Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, distanceResponse{OK: false, Message: "invalid JSON body"})
 		return
 	}
 
-	if req.V <= 0 || req.BatteryWh <= 0 || req.EtaDrive <= 0 || req.RaceDayMin <= 0 ||
-		req.RWheel <= 0 || req.Tmax <= 0 || req.Pmax <= 0 || req.M <= 0 || req.G <= 0 ||
-		req.Crr < 0 || req.Rho <= 0 || req.Cd <= 0 || req.A <= 0 {
-		writeJSON(w, http.StatusBadRequest, distanceResponse{OK: false, Message: "missing or invalid input values"})
+	if err := validateSimulationInputs(req); err != nil {
+		writeJSON(w, http.StatusBadRequest, distanceResponse{OK: false, Message: err.Error()})
 		return
 	}
 	//run sim if everything is valid
-	distance, ok := DistanceForSpeedEV(
-		req.V,
-		req.BatteryWh, req.SolarWhPerMin, req.EtaDrive, req.RaceDayMin,
-		req.RWheel, req.Tmax, req.Pmax,
-		req.M, req.G, req.Crr, req.Rho, req.Cd, req.A, req.Theta, req.AdditionalEfficiency,
-	)
+	distance, ok := distanceForInputs(req)
 	if !ok {
 		writeJSON(w, http.StatusBadRequest, distanceResponse{OK: false, Message: "inputs are not feasible for the model"})
 		return
 	}
 
 	writeJSON(w, http.StatusOK, distanceResponse{DistanceM: distance, OK: true})
+}
+
+func simulateHandler(w http.ResponseWriter, r *http.Request) {
+	addCORSHeaders(w)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	req := simulateRequest{
+		Inputs:     defaultSimulationInputs(),
+		Wraparound: true,
+	}
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, simulateResponse{OK: false, Message: "invalid JSON body"})
+		return
+	}
+
+	if err := validateSimulationInputs(req.Inputs); err != nil {
+		writeJSON(w, http.StatusBadRequest, simulateResponse{OK: false, Message: err.Error()})
+		return
+	}
+
+	distance, ok := distanceForInputs(req.Inputs)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, simulateResponse{OK: false, Message: "inputs are not feasible for the model"})
+		return
+	}
+
+	points, err := buildTelemetryForInputs(defaultTrackSegments(), req.Wraparound, req.Inputs)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, simulateResponse{OK: false, Message: err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, simulateResponse{DistanceM: distance, Points: points, OK: true})
+}
+
+func validateSimulationInputs(req simulationInputs) error {
+	if req.V <= 0 || req.BatteryWh <= 0 || req.EtaDrive <= 0 || req.RaceDayMin <= 0 ||
+		req.RWheel <= 0 || req.Tmax <= 0 || req.Pmax <= 0 || req.M <= 0 || req.G <= 0 ||
+		req.Crr < 0 || req.Rho <= 0 || req.Cd <= 0 || req.A <= 0 || req.Gmax <= 0 ||
+		req.AdditionalEfficiency < -100 || req.AdditionalEfficiency > 100 {
+		return fmt.Errorf("missing or invalid input values")
+	}
+	return nil
+}
+
+func distanceForInputs(req simulationInputs) (float64, bool) {
+	return DistanceForSpeedEV(
+		req.V,
+		req.BatteryWh, req.SolarWhPerMin, req.EtaDrive, req.RaceDayMin,
+		req.RWheel, req.Tmax, req.Pmax,
+		req.M, req.G, req.Crr, req.Rho, req.Cd, req.A, req.Theta, req.AdditionalEfficiency,
+	)
+}
+
+func defaultsHandler(w http.ResponseWriter, r *http.Request) {
+	addCORSHeaders(w)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, simulationDefaultsResponse())
 }
 
 // adds specific http response headers
@@ -185,98 +248,74 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 // setting tracks
 func defaultTrackSegments() []trackSegment {
 	return []trackSegment{
-		{Type: "straight", Length: 228.0829302},
-		{Type: "curve", Radius: 48.96199032 * 180.0 / (math.Pi * math.Abs(-9.5)), Angle: -9.5},
-		{Type: "curve", Radius: 28.41188666 * 180.0 / (math.Pi * math.Abs(-5.25)), Angle: -5.25},
-		{Type: "curve", Radius: 34.05114029 * 180.0 / (math.Pi * math.Abs(-7.52)), Angle: -7.52},
-		{Type: "curve", Radius: 43.77055978 * 180.0 / (math.Pi * math.Abs(-7.57)), Angle: -7.57},
-		{Type: "curve", Radius: 44.5252246 * 180.0 / (math.Pi * math.Abs(-17)), Angle: -17},
-		{Type: "curve", Radius: 38.03178991 * 180.0 / (math.Pi * math.Abs(-5.57)), Angle: -5.57},
-		{Type: "curve", Radius: 38.11472011 * 180.0 / (math.Pi * math.Abs(-7.81)), Angle: -7.81},
-		{Type: "curve", Radius: 146.8196268 * 180.0 / (math.Pi * math.Abs(-2.72)), Angle: -2.72},
-		{Type: "curve", Radius: 162.2446441 * 180.0 / (math.Pi * math.Abs(-6.24)), Angle: -6.24},
-		{Type: "curve", Radius: 69.01451279 * 180.0 / (math.Pi * math.Abs(-10.57)), Angle: -10.57},
-		{Type: "curve", Radius: 43.13199724 * 180.0 / (math.Pi * math.Abs(-8.28)), Angle: -8.28},
-		{Type: "curve", Radius: 44.08569454 * 180.0 / (math.Pi * math.Abs(-11.3)), Angle: -11.3},
-		{Type: "curve", Radius: 47.78438148 * 180.0 / (math.Pi * math.Abs(-7.7)), Angle: -7.7},
-		{Type: "curve", Radius: 57.97650311 * 180.0 / (math.Pi * math.Abs(-13.12)), Angle: -13.12},
-		{Type: "curve", Radius: 59.32826538 * 180.0 / (math.Pi * math.Abs(-12.37)), Angle: -12.37},
-		{Type: "curve", Radius: 60.05805114 * 180.0 / (math.Pi * math.Abs(-7.74)), Angle: -7.74},
-		{Type: "curve", Radius: 260.8486524 * 180.0 / (math.Pi * math.Abs(-6.71)), Angle: -6.71},
-		{Type: "curve", Radius: 32.17691776 * 180.0 / (math.Pi * math.Abs(-11.09)), Angle: -11.09},
-		{Type: "curve", Radius: 20.17691776 * 180.0 / (math.Pi * math.Abs(-11.85)), Angle: -11.85},
-		{Type: "curve", Radius: 19.87836904 * 180.0 / (math.Pi * math.Abs(-19.53)), Angle: -19.53},
-		{Type: "curve", Radius: 18.83344851 * 180.0 / (math.Pi * math.Abs(-19.36)), Angle: -19.36},
-		{Type: "curve", Radius: 23.67657222 * 180.0 / (math.Pi * math.Abs(-15.6)), Angle: -15.6},
-		{Type: "curve", Radius: 24.82100898 * 180.0 / (math.Pi * math.Abs(-25.25)), Angle: -25.25},
-		{Type: "curve", Radius: 22.08431237 * 180.0 / (math.Pi * math.Abs(-15.17)), Angle: -15.17},
-		{Type: "curve", Radius: 257.2080166 * 180.0 / (math.Pi * math.Abs(-8.78)), Angle: -8.78},
-		{Type: "curve", Radius: 30.13683483 * 180.0 / (math.Pi * math.Abs(9.25)), Angle: 9.25},
-		{Type: "curve", Radius: 26.27228749 * 180.0 / (math.Pi * math.Abs(16.89)), Angle: 16.89},
-		{Type: "curve", Radius: 17.15825847 * 180.0 / (math.Pi * math.Abs(8.78)), Angle: 8.78},
-		{Type: "curve", Radius: 15.9308915 * 180.0 / (math.Pi * math.Abs(17.39)), Angle: 17.39},
-		{Type: "curve", Radius: 21.98479613 * 180.0 / (math.Pi * math.Abs(23.2)), Angle: 23.2},
-		{Type: "curve", Radius: 29.44022115 * 180.0 / (math.Pi * math.Abs(24.79)), Angle: 24.79},
-		{Type: "curve", Radius: 83.9170698 * 180.0 / (math.Pi * math.Abs(15.7)), Angle: 15.7},
-		{Type: "curve", Radius: 30.18659295 * 180.0 / (math.Pi * math.Abs(-20.82)), Angle: -20.82},
-		{Type: "curve", Radius: 15.78991016 * 180.0 / (math.Pi * math.Abs(-14.38)), Angle: -14.38},
-		{Type: "curve", Radius: 16.36212854 * 180.0 / (math.Pi * math.Abs(-19.12)), Angle: -19.12},
-		{Type: "curve", Radius: 16.99239806 * 180.0 / (math.Pi * math.Abs(-9.1)), Angle: -9.1},
-		{Type: "curve", Radius: 22.06772633 * 180.0 / (math.Pi * math.Abs(-11.78)), Angle: -11.78},
-		{Type: "curve", Radius: 167.6765722 * 180.0 / (math.Pi * math.Abs(-14.49)), Angle: -14.49},
-		{Type: "curve", Radius: 24.00829302 * 180.0 / (math.Pi * math.Abs(12.63)), Angle: 12.63},
-		{Type: "curve", Radius: 17.92121631 * 180.0 / (math.Pi * math.Abs(15.72)), Angle: 15.72},
-		{Type: "curve", Radius: 17.19972357 * 180.0 / (math.Pi * math.Abs(16.95)), Angle: 16.95},
-		{Type: "curve", Radius: 20.10228058 * 180.0 / (math.Pi * math.Abs(7.57)), Angle: 7.57},
-		{Type: "curve", Radius: 15.87284036 * 180.0 / (math.Pi * math.Abs(24.01)), Angle: 24.01},
-		{Type: "curve", Radius: 21.37940567 * 180.0 / (math.Pi * math.Abs(17.63)), Angle: 17.63},
-		{Type: "curve", Radius: 223.8949551 * 180.0 / (math.Pi * math.Abs(3.38)), Angle: 3.38},
-		{Type: "curve", Radius: 22.88873531 * 180.0 / (math.Pi * math.Abs(12.04)), Angle: 12.04},
-		{Type: "curve", Radius: 29.05874223 * 180.0 / (math.Pi * math.Abs(15.09)), Angle: 15.09},
-		{Type: "curve", Radius: 29.18313753 * 180.0 / (math.Pi * math.Abs(9.34)), Angle: 9.34},
-		{Type: "curve", Radius: 29.18313753 * 180.0 / (math.Pi * math.Abs(-7.16)), Angle: -7.16},
-		{Type: "curve", Radius: 28.02211472 * 180.0 / (math.Pi * math.Abs(-12.45)), Angle: -12.45},
-		{Type: "curve", Radius: 24.10780926 * 180.0 / (math.Pi * math.Abs(-21.58)), Angle: -21.58},
-		{Type: "curve", Radius: 22.15894955 * 180.0 / (math.Pi * math.Abs(-24.33)), Angle: -24.33},
-		{Type: "curve", Radius: 19.6959226 * 180.0 / (math.Pi * math.Abs(-16.79)), Angle: -16.79},
-		{Type: "curve", Radius: 22.07601935 * 180.0 / (math.Pi * math.Abs(-13.21)), Angle: -13.21},
-		{Type: "curve", Radius: 21.42087077 * 180.0 / (math.Pi * math.Abs(-22.7)), Angle: -22.7},
-		{Type: "curve", Radius: 19.27297858 * 180.0 / (math.Pi * math.Abs(-7.09)), Angle: -7.09},
-		{Type: "curve", Radius: 18.09536973 * 180.0 / (math.Pi * math.Abs(-16.99)), Angle: -16.99},
-		{Type: "curve", Radius: 20.39253628 * 180.0 / (math.Pi * math.Abs(-18.52)), Angle: -18.52},
-		{Type: "curve", Radius: 19.68762958 * 180.0 / (math.Pi * math.Abs(-17.44)), Angle: -17.44},
-		{Type: "curve", Radius: 22.13407049 * 180.0 / (math.Pi * math.Abs(-13.94)), Angle: -13.94},
-		{Type: "curve", Radius: 16.85970974 * 180.0 / (math.Pi * math.Abs(-19.66)), Angle: -19.66},
-		{Type: "curve", Radius: 18.06219765 * 180.0 / (math.Pi * math.Abs(-8.63)), Angle: -8.63},
-		{Type: "curve", Radius: 17.15825847 * 180.0 / (math.Pi * math.Abs(-9.85)), Angle: -9.85},
-		{Type: "curve", Radius: 12.31513476 * 180.0 / (math.Pi * math.Abs(-14.08)), Angle: -14.08},
-		{Type: "curve", Radius: 29.02557015 * 180.0 / (math.Pi * math.Abs(-6.24)), Angle: -6.24},
-		{Type: "curve", Radius: 16.54457498 * 180.0 / (math.Pi * math.Abs(11.95)), Angle: 11.95},
-		{Type: "curve", Radius: 22.90532135 * 180.0 / (math.Pi * math.Abs(11.39)), Angle: 11.39},
-		{Type: "curve", Radius: 70.79751209 * 180.0 / (math.Pi * math.Abs(3.04)), Angle: 3.04},
-		{Type: "curve", Radius: 19.9032481 * 180.0 / (math.Pi * math.Abs(16.22)), Angle: 16.22},
-		{Type: "curve", Radius: 22.45749827 * 180.0 / (math.Pi * math.Abs(17.46)), Angle: 17.46},
-		{Type: "curve", Radius: 25.75812025 * 180.0 / (math.Pi * math.Abs(5.13)), Angle: 5.13},
-		{Type: "curve", Radius: 33.21354527 * 180.0 / (math.Pi * math.Abs(0.11)), Angle: 0.11},
-		{Type: "curve", Radius: 34.10089841 * 180.0 / (math.Pi * math.Abs(-16.19)), Angle: -16.19},
-		{Type: "curve", Radius: 23.4609537 * 180.0 / (math.Pi * math.Abs(-12.13)), Angle: -12.13},
-		{Type: "curve", Radius: 25.05321355 * 180.0 / (math.Pi * math.Abs(-14.44)), Angle: -14.44},
-		{Type: "curve", Radius: 19.1983414 * 180.0 / (math.Pi * math.Abs(-1.86)), Angle: -1.86},
-		{Type: "curve", Radius: 64.79336558 * 180.0 / (math.Pi * math.Abs(-5.65)), Angle: -5.65},
-		{Type: "curve", Radius: 156.7297858 * 180.0 / (math.Pi * math.Abs(1.36)), Angle: 1.36},
-		{Type: "curve", Radius: 20.64132688 * 180.0 / (math.Pi * math.Abs(11.08)), Angle: 11.08},
-		{Type: "curve", Radius: 9.205252246 * 180.0 / (math.Pi * math.Abs(21.89)), Angle: 21.89},
-		{Type: "curve", Radius: 18.55977885 * 180.0 / (math.Pi * math.Abs(25.97)), Angle: 25.97},
-		{Type: "curve", Radius: 14.81962681 * 180.0 / (math.Pi * math.Abs(29.78)), Angle: 29.78},
-		{Type: "curve", Radius: 48.0 * 180.0 / (math.Pi * math.Abs(12.36)), Angle: 12.36},
-		{Type: "curve", Radius: 28.83483068 * 180.0 / (math.Pi * math.Abs(-15.86)), Angle: -15.86},
-		{Type: "curve", Radius: 23.60193504 * 180.0 / (math.Pi * math.Abs(-22.95)), Angle: -22.95},
-		{Type: "curve", Radius: 19.56323428 * 180.0 / (math.Pi * math.Abs(-10.39)), Angle: -10.39},
-		{Type: "curve", Radius: 16.72702142 * 180.0 / (math.Pi * math.Abs(-12.79)), Angle: -12.79},
-		{Type: "curve", Radius: 16.44505874 * 180.0 / (math.Pi * math.Abs(-20.69)), Angle: -20.69},
-		{Type: "curve", Radius: 17.65583967 * 180.0 / (math.Pi * math.Abs(-9.97)), Angle: -9.97},
-		{Type: "curve", Radius: 15.25086386 * 180.0 / (math.Pi * math.Abs(-12.54)), Angle: -12.54},
-		{Type: "curve", Radius: 16.37871458 * 180.0 / (math.Pi * math.Abs(-24.75)), Angle: -24.75},
+		{Type: "straight", Length: 1184.185211},
+		{Type: "curve", Radius: 46.01796821 * 180.0 / (math.Pi * math.Abs(-11.73)), Angle: -11.73},
+		{Type: "curve", Radius: 39.31720802 * 180.0 / (math.Pi * math.Abs(-12.04)), Angle: -12.04},
+		{Type: "curve", Radius: 39.78161714 * 180.0 / (math.Pi * math.Abs(-2.86)), Angle: -2.86},
+		{Type: "curve", Radius: 55.01589496 * 180.0 / (math.Pi * math.Abs(-6.57)), Angle: -6.57},
+		{Type: "curve", Radius: 38.23911541 * 180.0 / (math.Pi * math.Abs(-11.32)), Angle: -11.32},
+		{Type: "curve", Radius: 47.35314444 * 180.0 / (math.Pi * math.Abs(-5.21)), Angle: -5.21},
+		{Type: "curve", Radius: 36.01658604 * 180.0 / (math.Pi * math.Abs(-8.01)), Angle: -8.01},
+		{Type: "curve", Radius: 154.5155494 * 180.0 / (math.Pi * math.Abs(-5.55)), Angle: -5.55},
+		{Type: "curve", Radius: 193.8327574 * 180.0 / (math.Pi * math.Abs(-169.24)), Angle: -5.04},
+		{Type: "curve", Radius: 43.30615066 * 180.0 / (math.Pi * math.Abs(156.22)), Angle: -7.98},
+		{Type: "curve", Radius: 33.93503801 * 180.0 / (math.Pi * math.Abs(-10.06)), Angle: -10.06},
+		{Type: "curve", Radius: 37.78299931 * 180.0 / (math.Pi * math.Abs(-8.32)), Angle: -8.32},
+		{Type: "curve", Radius: 59.57705598 * 180.0 / (math.Pi * math.Abs(-8.69)), Angle: -8.69},
+		{Type: "curve", Radius: 49.14443677 * 180.0 / (math.Pi * math.Abs(-11.63)), Angle: -11.63},
+		{Type: "curve", Radius: 33.91015895 * 180.0 / (math.Pi * math.Abs(-14.53)), Angle: -14.53},
+		{Type: "curve", Radius: 33.74429855 * 180.0 / (math.Pi * math.Abs(-3.52)), Angle: -3.52},
+		{Type: "curve", Radius: 347.0048376 * 180.0 / (math.Pi * math.Abs(-11.94)), Angle: -11.94},
+		{Type: "curve", Radius: 25.26883207 * 180.0 / (math.Pi * math.Abs(-8.82)), Angle: -8.82},
+		{Type: "curve", Radius: 25.45127851 * 180.0 / (math.Pi * math.Abs(-21.36)), Angle: -21.36},
+		{Type: "curve", Radius: 23.06288874 * 180.0 / (math.Pi * math.Abs(-30.17)), Angle: -30.17},
+		{Type: "curve", Radius: 17.42363511 * 180.0 / (math.Pi * math.Abs(-20.57)), Angle: -20.57},
+		{Type: "curve", Radius: 17.39875605 * 180.0 / (math.Pi * math.Abs(-10.32)), Angle: -10.32},
+		{Type: "curve", Radius: 18.50172771 * 180.0 / (math.Pi * math.Abs(-16.83)), Angle: -16.83},
+		{Type: "curve", Radius: 292.2128542 * 180.0 / (math.Pi * math.Abs(-18.16)), Angle: -18.16},
+		{Type: "curve", Radius: 24.24049758 * 180.0 / (math.Pi * math.Abs(3.17)), Angle: 3.17},
+		{Type: "curve", Radius: 18.94125777 * 180.0 / (math.Pi * math.Abs(17.37)), Angle: 17.37},
+		{Type: "curve", Radius: 14.29716655 * 180.0 / (math.Pi * math.Abs(24.87)), Angle: 24.87},
+		{Type: "curve", Radius: 21.96821009 * 180.0 / (math.Pi * math.Abs(8.75)), Angle: 8.75},
+		{Type: "curve", Radius: 18.94125777 * 180.0 / (math.Pi * math.Abs(23.97)), Angle: 23.97},
+		{Type: "curve", Radius: 17.44851417 * 180.0 / (math.Pi * math.Abs(15.28)), Angle: 15.28},
+		{Type: "curve", Radius: 99.93918452 * 180.0 / (math.Pi * math.Abs(18.66)), Angle: 18.66},
+		{Type: "curve", Radius: 24.22391154 * 180.0 / (math.Pi * math.Abs(-6.99)), Angle: -6.99},
+		{Type: "curve", Radius: 21.78576365 * 180.0 / (math.Pi * math.Abs(-19.6)), Angle: -19.6},
+		{Type: "curve", Radius: 19.51347616 * 180.0 / (math.Pi * math.Abs(-20.02)), Angle: -20.02},
+		{Type: "curve", Radius: 16.64409122 * 180.0 / (math.Pi * math.Abs(-20.45)), Angle: -20.45},
+		{Type: "curve", Radius: 201.2467173 * 180.0 / (math.Pi * math.Abs(-17.9)), Angle: -17.9},
+		{Type: "curve", Radius: 16.08016586 * 180.0 / (math.Pi * math.Abs(12.37)), Angle: 12.37},
+		{Type: "curve", Radius: 15.24257084 * 180.0 / (math.Pi * math.Abs(12.68)), Angle: 12.68},
+		{Type: "curve", Radius: 15.17622668 * 180.0 / (math.Pi * math.Abs(16.25)), Angle: 16.25},
+		{Type: "curve", Radius: 14.84450587 * 180.0 / (math.Pi * math.Abs(17.3)), Angle: 17.3},
+		{Type: "curve", Radius: 14.57083621 * 180.0 / (math.Pi * math.Abs(9.98)), Angle: 9.98},
+		{Type: "curve", Radius: 15.98064962 * 180.0 / (math.Pi * math.Abs(19.62)), Angle: 19.62},
+		{Type: "curve", Radius: 107.5355909 * 180.0 / (math.Pi * math.Abs(8.61)), Angle: 8.61},
+		{Type: "curve", Radius: 72.18244644 * 180.0 / (math.Pi * math.Abs(-0.32)), Angle: -0.32},
+		{Type: "curve", Radius: 59.0048376 * 180.0 / (math.Pi * math.Abs(-0.7)), Angle: -0.7},
+		{Type: "curve", Radius: 21.36281963 * 180.0 / (math.Pi * math.Abs(6.43)), Angle: 6.43},
+		{Type: "curve", Radius: 21.71112647 * 180.0 / (math.Pi * math.Abs(11.79)), Angle: 11.79},
+		{Type: "curve", Radius: 22.83897719 * 180.0 / (math.Pi * math.Abs(20.52)), Angle: 20.52},
+		{Type: "curve", Radius: 27.28403594 * 180.0 / (math.Pi * math.Abs(0.95)), Angle: 0.95},
+		{Type: "curve", Radius: 26.19765031 * 180.0 / (math.Pi * math.Abs(-8.43)), Angle: -8.43},
+		{Type: "curve", Radius: 17.19143055 * 180.0 / (math.Pi * math.Abs(-14.28)), Angle: -14.28},
+		{Type: "curve", Radius: 18.72563925 * 180.0 / (math.Pi * math.Abs(-18.92)), Angle: -18.92},
+		{Type: "curve", Radius: 47.170698 * 180.0 / (math.Pi * math.Abs(-18.86)), Angle: -18.86},
+		{Type: "curve", Radius: 165.4955079 * 180.0 / (math.Pi * math.Abs(-5.33)), Angle: -5.33},
+		{Type: "curve", Radius: 28.3870076 * 180.0 / (math.Pi * math.Abs(-3.96)), Angle: -3.96},
+		{Type: "curve", Radius: 11.86731168 * 180.0 / (math.Pi * math.Abs(-12.26)), Angle: -12.26},
+		{Type: "curve", Radius: 14.47961299 * 180.0 / (math.Pi * math.Abs(-25.46)), Angle: -25.46},
+		{Type: "curve", Radius: 20.11886662 * 180.0 / (math.Pi * math.Abs(-8.48)), Angle: -8.48},
+		{Type: "curve", Radius: 32.93158258 * 180.0 / (math.Pi * math.Abs(-13.61)), Angle: -13.61},
+		{Type: "curve", Radius: 551.1458189 * 180.0 / (math.Pi * math.Abs(-3.12)), Angle: -3.12},
+		{Type: "curve", Radius: 26.47131997 * 180.0 / (math.Pi * math.Abs(-21.38)), Angle: -21.38},
+		{Type: "curve", Radius: 19.02418798 * 180.0 / (math.Pi * math.Abs(-22.38)), Angle: -22.38},
+		{Type: "curve", Radius: 21.52868003 * 180.0 / (math.Pi * math.Abs(-13.68)), Angle: -13.68},
+		{Type: "curve", Radius: 19.78714582 * 180.0 / (math.Pi * math.Abs(-19.39)), Angle: -19.39},
+		{Type: "curve", Radius: 29.14996545 * 180.0 / (math.Pi * math.Abs(-14.86)), Angle: -14.86},
+		{Type: "curve", Radius: 36 * 180.0 / (math.Pi * math.Abs(-16.12)), Angle: -16.12},
+		{Type: "curve", Radius: 42.00414651 * 180.0 / (math.Pi * math.Abs(-6.48)), Angle: -6.48},
 	}
 }
 
@@ -346,12 +385,17 @@ const (
 )
 
 func buildTelemetry(segments []trackSegment, wraparound bool) ([]telemetryPoint, error) {
+	return buildTelemetryForInputs(segments, wraparound, defaultSimulationInputs())
+}
+
+func buildTelemetryForInputs(segments []trackSegment, wraparound bool, inputs simulationInputs) ([]telemetryPoint, error) {
 	if !wraparound {
-		return buildTelemetryOneLapWithWraparound(segments, defaultTelemetryStartSpeed, false)
+		return buildTelemetryOneLapWithWraparoundForInputs(segments, defaultTelemetryStartSpeed, false, inputs)
 	}
 
-	startSpeed, err := warmTelemetryStartSpeed(
+	startSpeed, err := warmTelemetryStartSpeedForInputs(
 		segments,
+		inputs,
 		defaultTelemetryStartSpeed,
 		telemetryWarmupMaxLaps,
 		telemetryWarmupTolerance,
@@ -359,14 +403,18 @@ func buildTelemetry(segments []trackSegment, wraparound bool) ([]telemetryPoint,
 	if err != nil {
 		return nil, err
 	}
-	return buildTelemetryOneLapWithWraparound(segments, startSpeed, true)
+	return buildTelemetryOneLapWithWraparoundForInputs(segments, startSpeed, true, inputs)
 }
 
 // buildTelemetryOneLap simulates a single lap and starts from the provided speed.
 // This is the primitive needed for later wraparound support, where one lap warms up
 // the state and the next lap starts from the previous lap's terminal speed.
 func buildTelemetryOneLap(segments []trackSegment, startSpeed float64) ([]telemetryPoint, error) {
-	return buildTelemetryOneLapWithWraparound(segments, startSpeed, true)
+	return buildTelemetryOneLapForInputs(segments, startSpeed, defaultSimulationInputs())
+}
+
+func buildTelemetryOneLapForInputs(segments []trackSegment, startSpeed float64, inputs simulationInputs) ([]telemetryPoint, error) {
+	return buildTelemetryOneLapWithWraparoundForInputs(segments, startSpeed, true, inputs)
 }
 
 // buildTelemetryOneLapWithWraparound simulates one lap and chooses whether the
@@ -377,28 +425,29 @@ func buildTelemetryOneLapWithWraparound(
 	startSpeed float64,
 	wraparound bool,
 ) ([]telemetryPoint, error) {
+	return buildTelemetryOneLapWithWraparoundForInputs(
+		segments,
+		startSpeed,
+		wraparound,
+		defaultSimulationInputs(),
+	)
+}
+
+func buildTelemetryOneLapWithWraparoundForInputs(
+	segments []trackSegment,
+	startSpeed float64,
+	wraparound bool,
+	inputs simulationInputs,
+) ([]telemetryPoint, error) {
 	const (
 		stepM    = 1.0
-		gmax     = 0.8
 		muTire   = 0.9
 		maxSpeed = 40.0
 		vMin     = 0.5
-		A        = 0.456
-		Cd       = 0.21
-		rho      = 1.225
-		Crr      = 0.0015
-		m        = 285.0
-		g        = 9.81
-		theta    = 0.0
-		rWheel   = 0.2792
-		Tmax     = 45.0
-		Pmax     = 10000.0
-		etaDrive = 0.90
-		additionalEfficiency = 0.00
 	)
 
 	track := telemetryTrackFromSegments(segments)
-	cruiseCap := math.Min(maxSpeed, optimalCruiseSpeed)
+	cruiseCap := math.Min(maxSpeed, inputs.V)
 	if cruiseCap <= 0 {
 		cruiseCap = maxSpeed
 	}
@@ -406,18 +455,18 @@ func buildTelemetryOneLapWithWraparound(
 		track,
 		wraparound,
 		stepM,
-		gmax,
+		inputs.Gmax,
 		cruiseCap,
-		0.95*g,
+		0.95*inputs.G,
 		vMin,
-		m,
-		g,
-		Crr,
-		rho,
-		Cd,
-		A,
-		theta,
-		additionalEfficiency,
+		inputs.M,
+		inputs.G,
+		inputs.Crr,
+		inputs.Rho,
+		inputs.Cd,
+		inputs.A,
+		inputs.Theta,
+		inputs.AdditionalEfficiency,
 	)
 	if err != nil {
 		return nil, err
@@ -449,16 +498,42 @@ func buildTelemetryOneLapWithWraparound(
 				if profileIdx < len(profiles.Coast) {
 					coastSpeed = profiles.Coast[profileIdx]
 				}
-				aLongMax := muTire * g
+				aLongMax := muTire * inputs.G
 				var a float64
 				if v > brakeSpeed {
 					aReq := (brakeSpeed*brakeSpeed - v*v) / (2 * ds)
 					a = math.Max(aReq, -aLongMax)
 				} else if v > coastSpeed {
-					aCoast := coastDecelFromPower(v, vMin, m, g, Crr, rho, Cd, A, theta, additionalEfficiency)
+					aCoast := coastDecelFromPower(
+						v,
+						vMin,
+						inputs.M,
+						inputs.G,
+						inputs.Crr,
+						inputs.Rho,
+						inputs.Cd,
+						inputs.A,
+						inputs.Theta,
+						inputs.AdditionalEfficiency,
+					)
 					a = math.Max(aCoast, -aLongMax)
 				} else {
-					aPower := accelAtSpeed(v, vMin, rWheel, Tmax, Pmax, etaDrive, m, g, Crr, rho, Cd, A, theta, additionalEfficiency)
+					aPower := accelAtSpeed(
+						v,
+						vMin,
+						inputs.RWheel,
+						inputs.Tmax,
+						inputs.Pmax,
+						inputs.EtaDrive,
+						inputs.M,
+						inputs.G,
+						inputs.Crr,
+						inputs.Rho,
+						inputs.Cd,
+						inputs.A,
+						inputs.Theta,
+						inputs.AdditionalEfficiency,
+					)
 					a = math.Min(aPower, aLongMax)
 				}
 				vNext := updateSpeed(v, a, ds)
@@ -483,7 +558,7 @@ func buildTelemetryOneLapWithWraparound(
 				points = append(points, telemetryPoint{X: x, Y: y, Speed: v, Accel: 0, Distance: distance})
 				continue
 			}
-			aLatMax := gmax * g
+			aLatMax := inputs.Gmax * inputs.G
 			vCap := math.Sqrt(aLatMax * seg.Radius)
 			angleDeg := seg.Angle
 			arcLength := seg.Radius * math.Abs(angleDeg) * math.Pi / 180.0
@@ -528,17 +603,43 @@ func buildTelemetryOneLapWithWraparound(
 				heading += delta
 				distance += ds
 				aLat := (v * v) / seg.Radius
-				aTotalMax := muTire * g
+				aTotalMax := muTire * inputs.G
 				aLongMax := math.Sqrt(math.Max(0, aTotalMax*aTotalMax-aLat*aLat))
 				var a float64
 				if v > brakeSpeed {
 					aReq := (brakeSpeed*brakeSpeed - v*v) / (2 * ds)
 					a = math.Max(aReq, -aLongMax)
 				} else if v > coastSpeed {
-					aCoast := coastDecelFromPower(v, vMin, m, g, Crr, rho, Cd, A, theta, additionalEfficiency)
+					aCoast := coastDecelFromPower(
+						v,
+						vMin,
+						inputs.M,
+						inputs.G,
+						inputs.Crr,
+						inputs.Rho,
+						inputs.Cd,
+						inputs.A,
+						inputs.Theta,
+						inputs.AdditionalEfficiency,
+					)
 					a = math.Max(aCoast, -aLongMax)
 				} else {
-					aPower := accelAtSpeed(v, vMin, rWheel, Tmax, Pmax, etaDrive, m, g, Crr, rho, Cd, A, theta, additionalEfficiency)
+					aPower := accelAtSpeed(
+						v,
+						vMin,
+						inputs.RWheel,
+						inputs.Tmax,
+						inputs.Pmax,
+						inputs.EtaDrive,
+						inputs.M,
+						inputs.G,
+						inputs.Crr,
+						inputs.Rho,
+						inputs.Cd,
+						inputs.A,
+						inputs.Theta,
+						inputs.AdditionalEfficiency,
+					)
 					a = math.Min(aPower, aLongMax)
 				}
 				vNext := updateSpeed(v, a, ds)
@@ -644,6 +745,22 @@ func warmTelemetryStartSpeed(
 	maxLaps int,
 	tolerance float64,
 ) (float64, error) {
+	return warmTelemetryStartSpeedForInputs(
+		segments,
+		defaultSimulationInputs(),
+		initialStartSpeed,
+		maxLaps,
+		tolerance,
+	)
+}
+
+func warmTelemetryStartSpeedForInputs(
+	segments []trackSegment,
+	inputs simulationInputs,
+	initialStartSpeed float64,
+	maxLaps int,
+	tolerance float64,
+) (float64, error) {
 	startSpeed, err := validateTelemetryStartSpeed(initialStartSpeed)
 	if err != nil {
 		return 0, err
@@ -656,7 +773,7 @@ func warmTelemetryStartSpeed(
 	}
 
 	for lap := 0; lap < maxLaps; lap++ {
-		points, err := buildTelemetryOneLap(segments, startSpeed)
+		points, err := buildTelemetryOneLapForInputs(segments, startSpeed, inputs)
 		if err != nil {
 			return 0, err
 		}
@@ -734,35 +851,51 @@ func coastDecel(
 
 // brought the function from flare_sim file to here ...
 func computeOptimalSpeed() float64 {
-	const (
-		A             = 0.456
-		Cd            = 0.21
-		rho           = 1.225
-		Crr           = 0.0015
-		m             = 285.0
-		g             = 9.81
-		theta         = 0.0
-		rWheel        = 0.2792
-		Tmax          = 45.0
-		Pmax          = 10000.0
-		batteryWh     = 5000.0
-		solarWhPerMin = 5.0
-		etaDrive      = 0.90
-		raceDayMin    = 480.0
-		additionalEfficiency = 0.0
-	)
+	inputs := defaultSimulationInputs()
 
 	bestV, bestD := 0.0, 0.0
 	for v := 2.0; v <= 40.0; v += 0.5 {
-		if d, ok := DistanceForSpeedEV(v, batteryWh, solarWhPerMin, etaDrive, raceDayMin,
-			rWheel, Tmax, Pmax, m, g, Crr, rho, Cd, A, theta, additionalEfficiency); ok && d > bestD {
+		if d, ok := DistanceForSpeedEV(
+			v,
+			inputs.BatteryWh,
+			inputs.SolarWhPerMin,
+			inputs.EtaDrive,
+			inputs.RaceDayMin,
+			inputs.RWheel,
+			inputs.Tmax,
+			inputs.Pmax,
+			inputs.M,
+			inputs.G,
+			inputs.Crr,
+			inputs.Rho,
+			inputs.Cd,
+			inputs.A,
+			inputs.Theta,
+			inputs.AdditionalEfficiency,
+		); ok && d > bestD {
 			bestD, bestV = d, v
 		}
 	}
 
 	for v := math.Max(0.5, bestV-2.0); v <= bestV+2.0; v += 0.1 {
-		if d, ok := DistanceForSpeedEV(v, batteryWh, solarWhPerMin, etaDrive, raceDayMin,
-			rWheel, Tmax, Pmax, m, g, Crr, rho, Cd, A, theta, additionalEfficiency); ok && d > bestD {
+		if d, ok := DistanceForSpeedEV(
+			v,
+			inputs.BatteryWh,
+			inputs.SolarWhPerMin,
+			inputs.EtaDrive,
+			inputs.RaceDayMin,
+			inputs.RWheel,
+			inputs.Tmax,
+			inputs.Pmax,
+			inputs.M,
+			inputs.G,
+			inputs.Crr,
+			inputs.Rho,
+			inputs.Cd,
+			inputs.A,
+			inputs.Theta,
+			inputs.AdditionalEfficiency,
+		); ok && d > bestD {
 			bestD, bestV = d, v
 		}
 	}

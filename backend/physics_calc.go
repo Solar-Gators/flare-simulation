@@ -215,7 +215,7 @@ func calcCurveSpeed(segments Segment, gravity float64, gmax float64) float64 {
 
 // Power required to maintaining coasting speed
 func PowerRequired(v, m, g, Crr, rho, Cd, A, theta, additionalEfficiency float64) float64 {
-	return ((Crr*m*g+m*g*math.Sin(theta))*v + 0.5*rho*Cd*A*v*v*v) * (1 + additionalEfficiency / 100)
+	return ((Crr*m*g+m*g*math.Sin(theta))*v + 0.5*rho*Cd*A*v*v*v) * (1 + additionalEfficiency/100)
 }
 
 //Calculates wheel mechanical power

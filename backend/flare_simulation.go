@@ -7,32 +7,24 @@ import (
 )
 
 func runSimulation() {
+	inputs := defaultSimulationInputs()
+	A := inputs.A
+	Cd := inputs.Cd
+	rho := inputs.Rho
+	Crr := inputs.Crr
+	m := inputs.M
+	g := inputs.G
+	theta := inputs.Theta
+	rWheel := inputs.RWheel
+	Tmax := inputs.Tmax
+	Pmax := inputs.Pmax
+	batteryWh := inputs.BatteryWh
+	solarWhPerMin := inputs.SolarWhPerMin
+	etaDrive := inputs.EtaDrive
+	raceDayMin := inputs.RaceDayMin
+	gmax := inputs.Gmax
+	additionalEfficiency := inputs.AdditionalEfficiency
 
-	// --- Inputs from your data ---
-	const (
-		// Environment / vehicle
-		A     = 0.456  // frontal area [m^2]
-		Cd    = 0.21   // drag coefficient [-]
-		rho   = 1.225  // air density [kg/m^3]
-		Crr   = 0.0015 // rolling resistance coefficient [-]
-		m     = 285.0  // mass [kg]
-		g     = 9.81   // gravity [m/s^2]
-		theta = 0.0    // road grade [rad], 0 = flat
-
-		// EV capability
-		rWheel = 0.2792  // wheel radius [m]
-		Tmax   = 45.0    // max wheel torque [N·m]  (assumed at wheel)
-		Pmax   = 10000.0 // max motor/inverter power [W] (pack-side cap)
-
-		// Energy / time
-		batteryWh     = 5000.0 // battery capacity [Wh]
-		solarWhPerMin = 5.0    // solar generation [Wh/min] (avg)
-		etaDrive      = 0.90   // battery→wheel efficiency [0..1]
-		raceDayMin    = 480.0  // race duration [min] = 8 hours
-		gmax          = 0.8
-
-		additionalEfficiency = 0.0
-	)
 	/*solarYield := 0.0
 	maxSpeed := 50.0
 	maxGforce := 0.5 */
