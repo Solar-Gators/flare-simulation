@@ -402,7 +402,26 @@ func buildTelemetryOneLapWithWraparound(
 	if cruiseCap <= 0 {
 		cruiseCap = maxSpeed
 	}
-	profiles := buildProfiles(samples, cruiseCap, 0.95*g, vMin, m, g, Crr, rho, Cd, A, theta, additionalEfficiency)
+	profiles, err := buildTelemetryProfiles(
+		track,
+		wraparound,
+		stepM,
+		gmax,
+		cruiseCap,
+		0.95*g,
+		vMin,
+		m,
+		g,
+		Crr,
+		rho,
+		Cd,
+		A,
+		theta,
+		additionalEfficiency,
+	)
+	if err != nil {
+		return nil, err
+	}
 
 	points := make([]telemetryPoint, 0, 64)
 	x, y, heading := 0.0, 0.0, 0.0
@@ -577,15 +596,16 @@ func buildTelemetryProfiles(
 	Cd float64,
 	A float64,
 	theta float64,
+	additionalEfficiency float64,
 ) (profileSet, error) {
 	samples := sampleTrackMeters(track, stepM, g, gmax)
 	if !wraparound || len(samples) == 0 {
-		return buildProfiles(samples, cruiseCap, maxBrakeMPS2, vMin, m, g, Crr, rho, Cd, A, theta), nil
+		return buildProfiles(samples, cruiseCap, maxBrakeMPS2, vMin, m, g, Crr, rho, Cd, A, theta, additionalEfficiency), nil
 	}
 
 	wrappedTrack := repeatTrack(track, telemetryWrapProfileLaps)
 	wrappedSamples := sampleTrackMeters(wrappedTrack, stepM, g, gmax)
-	wrappedProfiles := buildProfiles(wrappedSamples, cruiseCap, maxBrakeMPS2, vMin, m, g, Crr, rho, Cd, A, theta)
+	wrappedProfiles := buildProfiles(wrappedSamples, cruiseCap, maxBrakeMPS2, vMin, m, g, Crr, rho, Cd, A, theta, additionalEfficiency)
 
 	oneLapCount := len(samples)
 	start := oneLapCount
