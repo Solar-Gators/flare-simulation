@@ -1,5 +1,5 @@
 import type { FormEvent, MouseEvent } from 'react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import TelemetryGraph from './components/TelemetryGraph'
 import {
@@ -14,6 +14,13 @@ type TelemetryPoint = {
   speed: number
   accel: number
   distance: number
+}
+
+type SimulateResponse = {
+  distanceM?: number
+  points?: TelemetryPoint[]
+  ok?: boolean
+  message?: string
 }
 
 type TrackSegment = {
@@ -215,6 +222,45 @@ function telemetryUrl(wraparoundEnabled: boolean): string {
   return url.toString()
 }
 
+function formatTrackStatus(pointCount: number, wraparoundEnabled: boolean): string {
+  return `Telemetry points: ${pointCount} · Wraparound ${wraparoundEnabled ? 'on' : 'off'}`
+}
+
+async function postSimulation(
+  inputs: Record<string, number>,
+  wraparoundEnabled: boolean,
+): Promise<{ distanceM: number; points: TelemetryPoint[] }> {
+  let response: Response
+
+  try {
+    response = await fetch('http://localhost:8080/simulate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ inputs, wraparound: wraparoundEnabled }),
+    })
+  } catch {
+    throw new Error('Network error. Is the server running?')
+  }
+
+  let data: SimulateResponse
+  try {
+    data = (await response.json()) as SimulateResponse
+  } catch {
+    throw new Error('Request failed.')
+  }
+
+  if (
+    !response.ok ||
+    !data.ok ||
+    typeof data.distanceM !== 'number' ||
+    !Array.isArray(data.points)
+  ) {
+    throw new Error(data.message || 'Request failed.')
+  }
+
+  return { distanceM: data.distanceM, points: data.points }
+}
+
 function App() {
   const [inputsOpen, setInputsOpen] = useState<boolean>(false)
 
@@ -233,6 +279,7 @@ function App() {
   const trackWidth = 30
   const [wraparoundEnabled, setWraparoundEnabled] = useState(true)
   const [hoverPoint, setHoverPoint] = useState<HoverPoint | null>(null)
+  const lastSimulationInputsRef = useRef<Record<string, number> | null>(null)
 
   const [tooltip, setTooltip] = useState<TooltipState>({
     visible: false,
@@ -347,6 +394,18 @@ function App() {
 
     async function loadTelemetry() {
       try {
+        const lastSimulationInputs = lastSimulationInputsRef.current
+        if (lastSimulationInputs) {
+          const data = await postSimulation(lastSimulationInputs, wraparoundEnabled)
+
+          if (isMounted) {
+            setResult(Number(data.distanceM).toFixed(2))
+            setTelemetry(data.points)
+            setTrackStatus(formatTrackStatus(data.points.length, wraparoundEnabled))
+          }
+          return
+        }
+
         //pause async func w/o freezing UI until backend response
         const response = await fetch(telemetryUrl(wraparoundEnabled))
         const data = await response.json()
@@ -358,12 +417,14 @@ function App() {
 
         if (isMounted) {
           setTelemetry(data.points)
+          setTrackStatus(formatTrackStatus(data.points.length, wraparoundEnabled))
+        }
+      } catch (error) {
+        if (isMounted) {
           setTrackStatus(
-            `Telemetry points: ${data.points.length} · Wraparound ${wraparoundEnabled ? 'on' : 'off'}`,
+            error instanceof Error ? error.message : 'Unable to reach backend for track telemetry.',
           )
         }
-      } catch {
-        if (isMounted) setTrackStatus('Unable to reach backend for track telemetry.')
       }
     }
 
@@ -435,22 +496,15 @@ function App() {
     }
 
     try {
-      const response = await fetch('http://localhost:8080/distance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      const data = await response.json()
+      const data = await postSimulation(payload, wraparoundEnabled)
 
-      if (!response.ok || !data.ok) {
-        setStatus(data.message || 'Request failed.')
-        return
-      }
-
-      setResult(Number(data.distanceM).toFixed(2))
+      lastSimulationInputsRef.current = payload
+      setResult(data.distanceM.toFixed(2))
+      setTelemetry(data.points)
+      setTrackStatus(formatTrackStatus(data.points.length, wraparoundEnabled))
       setStatus('Success.')
-    } catch {
-      setStatus('Network error. Is the server running?')
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Network error. Is the server running?')
     }
   }
 
