@@ -60,14 +60,7 @@ const initialFields: FieldDef[] = [
   { name: 'cD', label: 'Drag Coefficient', step: '0.01', value: '0.21' },
   { name: 'a', label: 'Frontal Area (m^2)', step: '0.001', value: '0.456' },
   { name: 'theta', label: 'Track Grade (rad)', step: '0.001', value: '0' },
-  {
-    name: 'gmax',
-    label: 'Lateral G-force Limit',
-    step: '0.01',
-    value: '1.00',
-    min: '0.1',
-    max: '2.0',
-  },
+  { name: 'gmax', label: 'Lateral G-force Limit', step: '0.01', value: '1.00' },
 ]
 
 const ABS_COLOR_MIN_SPEED = 0.0
@@ -77,6 +70,7 @@ const ABS_COLOR_TICKS = [0, 6, 12, 18, 24] as const
 const DISTANCE_FIELD_NAMES = new Set([
   'v',
   'batteryWh',
+  'additionalEfficiency',
   'solarWhPerMin',
   'etaDrive',
   'raceDayMin',
@@ -118,7 +112,7 @@ const initialBatteryWh: FieldDef = {
   value: '5000',
 }
 const initialAdditionalEfficiency: FieldDef = {
-  name: 'efficiency',
+  name: 'additionalEfficiency',
   label: 'Additional Efficiency (%)',
   step: '1',
   value: '0.00',
