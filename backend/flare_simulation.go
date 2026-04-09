@@ -30,6 +30,8 @@ func runSimulation() {
 		etaDrive      = 0.90   // battery→wheel efficiency [0..1]
 		raceDayMin    = 480.0  // race duration [min] = 8 hours
 		gmax          = 0.8
+
+		additionalEfficiency = 0.0
 	)
 	/*solarYield := 0.0
 	maxSpeed := 50.0
@@ -165,7 +167,7 @@ func runSimulation() {
 	}
 
 	trackSamples := sampleTrackMeters(NCM_Motorsports_Park, 1.0, g, gmax)
-	profiles := buildProfiles(trackSamples, 40.0, 0.95*g, 0.5, m, g, Crr, rho, Cd, A, theta)
+	profiles := buildProfiles(trackSamples, 40.0, 0.95*g, 0.5, m, g, Crr, rho, Cd, A, theta, additionalEfficiency)
 	fmt.Println("Prepared track samples:", len(trackSamples))
 	fmt.Println("Prepared base profile points:", len(profiles.Base))
 	fmt.Println("Prepared brake profile points:", len(profiles.Brake))
@@ -219,7 +221,7 @@ func runSimulation() {
 		//find best speed and distace (estimate)
 		for v := 2.0; v <= 40.0; v += 0.5 {
 			if d, ok := DistanceForSpeedEV(v, battWithLosses, solarWhPerMin, etaDrive, raceDayMin,
-				rWheel, Tmax, Pmax, m, g, Crr, rho, Cd, A, theta); ok && d > bestD {
+				rWheel, Tmax, Pmax, m, g, Crr, rho, Cd, A, theta, additionalEfficiency); ok && d > bestD {
 				bestD, bestV = d, v
 			}
 		}
@@ -228,7 +230,7 @@ func runSimulation() {
 		// This is a finer search in a narrow window around the previously found best speed
 		for v := math.Max(0.5, bestV-2.0); v <= bestV+2.0; v += 0.1 {
 			if d, ok := DistanceForSpeedEV(v, battWithLosses, solarWhPerMin, etaDrive, raceDayMin,
-				rWheel, Tmax, Pmax, m, g, Crr, rho, Cd, A, theta); ok && d > bestD {
+				rWheel, Tmax, Pmax, m, g, Crr, rho, Cd, A, theta, additionalEfficiency); ok && d > bestD {
 				bestD, bestV = d, v
 				numLaps = d / getTotalLength(NCM_Motorsports_Park)
 			}
@@ -238,7 +240,7 @@ func runSimulation() {
 		fmt.Println("velocity: ", bestV)
 
 		//find total losses by taking net losses of all curves (given the calculated laps)
-		cruiseE := PowerRequired(bestV, m, g, Crr, rho, Cd, A, theta)
+		cruiseE := PowerRequired(bestV, m, g, Crr, rho, Cd, A, theta, additionalEfficiency)
 		for j := 0; j < len(NCM_Motorsports_Park.Segments)-1; j++ {
 			if NCM_Motorsports_Park.Segments[j].Radius != 0 {
 				lapLoss += float64(netCurveLosses(m, A, Cd, Crr, NCM_Motorsports_Park.Segments[j], bestV, 0.5, rho, g, cruiseE, 0.006, 10, gmax)) // MAKE A FUNCTION TO CHECK IF THE NEXT SEGMENT IS A CURVE

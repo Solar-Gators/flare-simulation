@@ -48,26 +48,19 @@ type FieldDef = {
 
 // input fields for distance calculator (no solarWhPerMin, no raceDayMin, no batteryWh here)
 const initialFields: FieldDef[] = [
-  { name: 'v', label: 'v (m/s)', step: '0.1', value: '20' },
-  { name: 'etaDrive', label: 'etaDrive', step: '0.01', value: '0.9' },
-  { name: 'rWheel', label: 'rWheel (m)', step: '0.0001', value: '0.2792' },
-  { name: 'tMax', label: 'tMax (N·m)', step: '0.1', value: '45' },
-  { name: 'pMax', label: 'pMax (W)', step: '1', value: '10000' },
-  { name: 'm', label: 'm (kg)', step: '0.1', value: '285' },
-  { name: 'g', label: 'g (m/s^2)', step: '0.01', value: '9.81' },
-  { name: 'cRr', label: 'cRr', step: '0.0001', value: '0.0015' },
+  { name: 'v', label: 'Baseline Velocity (m/s)', step: '0.1', value: '20' },
+  { name: 'etaDrive', label: 'Drivetrain Efficiency (%)', step: '0.01', value: '0.9' },
+  { name: 'rWheel', label: 'Wheel Radius (m)', step: '0.0001', value: '0.2792' },
+  { name: 'tMax', label: 'Max Motor Torque (N·m)', step: '0.1', value: '45' },
+  { name: 'pMax', label: 'Max Motor Power (W)', step: '1', value: '10000' },
+  { name: 'm', label: 'Mass (kg)', step: '0.1', value: '285' },
+  { name: 'g', label: 'Gravity (m/s^2)', step: '0.01', value: '9.81' },
+  { name: 'cRr', label: 'Rolling Resistance Coefficient', step: '0.0001', value: '0.0015' },
   { name: 'rho', label: 'rho', step: '0.001', value: '1.225' },
-  { name: 'cD', label: 'cD', step: '0.01', value: '0.21' },
-  { name: 'a', label: 'a (m^2)', step: '0.001', value: '0.456' },
-  { name: 'theta', label: 'theta (rad)', step: '0.001', value: '0' },
-  {
-    name: 'gmax',
-    label: 'gmax (lateral g limit)',
-    step: '0.01',
-    value: '1.00',
-    min: '0.1',
-    max: '2.0',
-  },
+  { name: 'cD', label: 'Drag Coefficient', step: '0.01', value: '0.21' },
+  { name: 'a', label: 'Frontal Area (m^2)', step: '0.001', value: '0.456' },
+  { name: 'theta', label: 'Track Grade (rad)', step: '0.001', value: '0' },
+  { name: 'gmax', label: 'Lateral G-force Limit', step: '0.01', value: '1.00' },
 ]
 
 const ABS_COLOR_MIN_SPEED = 0.0
@@ -77,6 +70,7 @@ const ABS_COLOR_TICKS = [0, 6, 12, 18, 24] as const
 const DISTANCE_FIELD_NAMES = new Set([
   'v',
   'batteryWh',
+  'additionalEfficiency',
   'solarWhPerMin',
   'etaDrive',
   'raceDayMin',
@@ -107,15 +101,23 @@ function clamp(value: number, min: number, max: number): number {
 // independent fields (outside the expandable inputs)
 const initialRaceDayMin: FieldDef = {
   name: 'raceDayMin',
-  label: 'raceDayMin',
+  label: 'Race Day Time (min)',
   step: '1',
   value: '480',
 }
 const initialBatteryWh: FieldDef = {
   name: 'batteryWh',
-  label: 'batteryWh',
+  label: 'Battery Power (Wh)',
   step: '1',
   value: '5000',
+}
+const initialAdditionalEfficiency: FieldDef = {
+  name: 'additionalEfficiency',
+  label: 'Additional Efficiency (%)',
+  step: '1',
+  value: '0.00',
+  min: '-100.00',
+  max: '100.00',
 }
 
 type VehiclePreset = {
@@ -226,6 +228,9 @@ function App() {
 
   const [raceDayMin, setRaceDayMin] = useState<FieldDef>(() => ({ ...initialRaceDayMin }))
   const [batteryWh, setBatteryWh] = useState<FieldDef>(() => ({ ...initialBatteryWh }))
+  const [additionalEfficiency, setAdditionalEfficiency] = useState<FieldDef>(() => ({
+    ...initialAdditionalEfficiency,
+  }))
 
   const [result, setResult] = useState('--')
   const [status, setStatus] = useState('')
@@ -383,6 +388,13 @@ function App() {
     }
     payload[batteryWh.name] = batteryValue
 
+    const effValue = toNumber(additionalEfficiency.value)
+    if (effValue === null || effValue < -100 || effValue > 100) {
+      setStatus(`Invalid value for ${additionalEfficiency.label}. Must be between -100 and 100.`)
+      return
+    }
+    payload[additionalEfficiency.name] = effValue
+
     try {
       const response = await fetch('http://localhost:8080/distance', {
         method: 'POST',
@@ -483,6 +495,21 @@ function App() {
               value={raceDayMin.value}
               onChange={(event) =>
                 setRaceDayMin((prev) => ({ ...prev, value: event.target.value }))
+              }
+            />
+          </label>
+
+          <label>
+            {additionalEfficiency.label}
+            <input
+              type="number"
+              step={additionalEfficiency.step}
+              min={additionalEfficiency.min}
+              max={additionalEfficiency.max}
+              name={additionalEfficiency.name}
+              value={additionalEfficiency.value}
+              onChange={(event) =>
+                setAdditionalEfficiency((prev) => ({ ...prev, value: event.target.value }))
               }
             />
           </label>
