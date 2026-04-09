@@ -82,7 +82,6 @@ func main() {
 	}
 }
 
-
 // is the HTTP handler
 // w --> is outgoing http response (write)
 // r --> incoming http request. pointer to struct with everything client sent (read)
@@ -181,76 +180,70 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 
 // setting tracks
 func defaultTrackSegments() []trackSegment {
-    return []trackSegment{
-        {Type: "straight", Length: 1184.185211},
-        {Type: "curve", Radius: 46.01796821 * 180.0 / (math.Pi * math.Abs(-11.73)), Angle: -11.73},
-        {Type: "curve", Radius: 39.31720802 * 180.0 / (math.Pi * math.Abs(-12.04)), Angle: -12.04},
-        {Type: "curve", Radius: 39.78161714 * 180.0 / (math.Pi * math.Abs(-2.86)), Angle: -2.86},
-        {Type: "curve", Radius: 55.01589496 * 180.0 / (math.Pi * math.Abs(-6.57)), Angle: -6.57},
-        {Type: "curve", Radius: 38.23911541 * 180.0 / (math.Pi * math.Abs(-11.32)), Angle: -11.32},
-        {Type: "curve", Radius: 47.35314444 * 180.0 / (math.Pi * math.Abs(-5.21)), Angle: -5.21},
-        {Type: "curve", Radius: 36.01658604 * 180.0 / (math.Pi * math.Abs(-8.01)), Angle: -8.01},
-        {Type: "curve", Radius: 154.5155494 * 180.0 / (math.Pi * math.Abs(-5.55)), Angle: -5.55},
-        {Type: "curve", Radius: 57.66136835 * 180.0 / (math.Pi * math.Abs(-169.24)), Angle: -169.24},
-        {Type: "curve", Radius: 43.30615066 * 180.0 / (math.Pi * math.Abs(156.22)), Angle: 156.22},
-        {Type: "curve", Radius: 33.93503801 * 180.0 / (math.Pi * math.Abs(-10.06)), Angle: -10.06},
-        {Type: "curve", Radius: 37.78299931 * 180.0 / (math.Pi * math.Abs(-8.32)), Angle: -8.32},
-        {Type: "curve", Radius: 59.57705598 * 180.0 / (math.Pi * math.Abs(-8.69)), Angle: -8.69},
-        {Type: "curve", Radius: 49.14443677 * 180.0 / (math.Pi * math.Abs(-11.63)), Angle: -11.63},
-        {Type: "curve", Radius: 33.91015895 * 180.0 / (math.Pi * math.Abs(-14.53)), Angle: -14.53},
-        {Type: "curve", Radius: 33.74429855 * 180.0 / (math.Pi * math.Abs(-3.52)), Angle: -3.52},
-        {Type: "curve", Radius: 347.0048376 * 180.0 / (math.Pi * math.Abs(-11.94)), Angle: -11.94},
-        {Type: "curve", Radius: 25.26883207 * 180.0 / (math.Pi * math.Abs(-8.82)), Angle: -8.82},
-        {Type: "curve", Radius: 25.45127851 * 180.0 / (math.Pi * math.Abs(-21.36)), Angle: -21.36},
-        {Type: "curve", Radius: 23.06288874 * 180.0 / (math.Pi * math.Abs(-30.17)), Angle: -30.17},
-        {Type: "curve", Radius: 17.42363511 * 180.0 / (math.Pi * math.Abs(-20.57)), Angle: -20.57},
-        {Type: "curve", Radius: 17.39875605 * 180.0 / (math.Pi * math.Abs(-10.32)), Angle: -10.32},
-        {Type: "curve", Radius: 18.50172771 * 180.0 / (math.Pi * math.Abs(-16.83)), Angle: -16.83},
-        {Type: "curve", Radius: 292.2128542 * 180.0 / (math.Pi * math.Abs(-18.16)), Angle: -18.16},
-        {Type: "curve", Radius: 24.24049758 * 180.0 / (math.Pi * math.Abs(3.17)), Angle: 3.17},
-        {Type: "curve", Radius: 18.94125777 * 180.0 / (math.Pi * math.Abs(17.37)), Angle: 17.37},
-        {Type: "curve", Radius: 14.29716655 * 180.0 / (math.Pi * math.Abs(24.87)), Angle: 24.87},
-        {Type: "curve", Radius: 21.96821009 * 180.0 / (math.Pi * math.Abs(8.75)), Angle: 8.75},
-        {Type: "curve", Radius: 18.94125777 * 180.0 / (math.Pi * math.Abs(23.97)), Angle: 23.97},
-        {Type: "curve", Radius: 17.44851417 * 180.0 / (math.Pi * math.Abs(15.28)), Angle: 15.28},
-        {Type: "curve", Radius: 99.93918452 * 180.0 / (math.Pi * math.Abs(18.66)), Angle: 18.66},
-        {Type: "curve", Radius: 24.22391154 * 180.0 / (math.Pi * math.Abs(-6.99)), Angle: -6.99},
-        {Type: "curve", Radius: 21.78576365 * 180.0 / (math.Pi * math.Abs(-19.6)), Angle: -19.6},
-        {Type: "curve", Radius: 19.51347616 * 180.0 / (math.Pi * math.Abs(-20.02)), Angle: -20.02},
-        {Type: "curve", Radius: 16.64409122 * 180.0 / (math.Pi * math.Abs(-20.45)), Angle: -20.45},
-        {Type: "curve", Radius: 201.2467173 * 180.0 / (math.Pi * math.Abs(-17.9)), Angle: -17.9},
-        {Type: "curve", Radius: 16.08016586 * 180.0 / (math.Pi * math.Abs(12.37)), Angle: 12.37},
-        {Type: "curve", Radius: 15.24257084 * 180.0 / (math.Pi * math.Abs(12.68)), Angle: 12.68},
-        {Type: "curve", Radius: 15.17622668 * 180.0 / (math.Pi * math.Abs(16.25)), Angle: 16.25},
-        {Type: "curve", Radius: 14.84450587 * 180.0 / (math.Pi * math.Abs(17.3)), Angle: 17.3},
-        {Type: "curve", Radius: 14.57083621 * 180.0 / (math.Pi * math.Abs(9.98)), Angle: 9.98},
-        {Type: "curve", Radius: 15.98064962 * 180.0 / (math.Pi * math.Abs(19.62)), Angle: 19.62},
-        {Type: "curve", Radius: 107.5355909 * 180.0 / (math.Pi * math.Abs(8.61)), Angle: 8.61},
-        {Type: "curve", Radius: 72.18244644 * 180.0 / (math.Pi * math.Abs(-0.32)), Angle: -0.32},
-        {Type: "curve", Radius: 59.0048376 * 180.0 / (math.Pi * math.Abs(-0.7)), Angle: -0.7},
-        {Type: "curve", Radius: 21.36281963 * 180.0 / (math.Pi * math.Abs(6.43)), Angle: 6.43},
-        {Type: "curve", Radius: 21.71112647 * 180.0 / (math.Pi * math.Abs(11.79)), Angle: 11.79},
-        {Type: "curve", Radius: 22.83897719 * 180.0 / (math.Pi * math.Abs(20.52)), Angle: 20.52},
-        {Type: "curve", Radius: 27.28403594 * 180.0 / (math.Pi * math.Abs(0.95)), Angle: 0.95},
-        {Type: "curve", Radius: 26.19765031 * 180.0 / (math.Pi * math.Abs(-8.43)), Angle: -8.43},
-        {Type: "curve", Radius: 17.19143055 * 180.0 / (math.Pi * math.Abs(-14.28)), Angle: -14.28},
-        {Type: "curve", Radius: 18.72563925 * 180.0 / (math.Pi * math.Abs(-18.92)), Angle: -18.92},
-        {Type: "curve", Radius: 47.170698 * 180.0 / (math.Pi * math.Abs(-18.86)), Angle: -18.86},
-        {Type: "curve", Radius: 165.4955079 * 180.0 / (math.Pi * math.Abs(-5.33)), Angle: -5.33},
-        {Type: "curve", Radius: 28.3870076 * 180.0 / (math.Pi * math.Abs(-3.96)), Angle: -3.96},
-        {Type: "curve", Radius: 11.86731168 * 180.0 / (math.Pi * math.Abs(-12.26)), Angle: -12.26},
-        {Type: "curve", Radius: 14.47961299 * 180.0 / (math.Pi * math.Abs(-25.46)), Angle: -25.46},
-        {Type: "curve", Radius: 20.11886662 * 180.0 / (math.Pi * math.Abs(-8.48)), Angle: -8.48},
-        {Type: "curve", Radius: 32.93158258 * 180.0 / (math.Pi * math.Abs(-13.61)), Angle: -13.61},
-        {Type: "curve", Radius: 551.1458189 * 180.0 / (math.Pi * math.Abs(-3.12)), Angle: -3.12},
-        {Type: "curve", Radius: 26.47131997 * 180.0 / (math.Pi * math.Abs(-21.38)), Angle: -21.38},
-        {Type: "curve", Radius: 19.02418798 * 180.0 / (math.Pi * math.Abs(-22.38)), Angle: -22.38},
-        {Type: "curve", Radius: 21.52868003 * 180.0 / (math.Pi * math.Abs(-13.68)), Angle: -13.68},
-        {Type: "curve", Radius: 19.78714582 * 180.0 / (math.Pi * math.Abs(-19.39)), Angle: -19.39},
-        {Type: "curve", Radius: 29.14996545 * 180.0 / (math.Pi * math.Abs(-14.86)), Angle: -14.86},
-        {Type: "curve", Radius: 36 * 180.0 / (math.Pi * math.Abs(-16.12)), Angle: -16.12},
-        {Type: "curve", Radius: 42.00414651 * 180.0 / (math.Pi * math.Abs(-6.48)), Angle: -6.48},
-    }
+	return []trackSegment{
+		{Type: "straight", Length: 1178.833711},
+		{Type: "curve", Radius: 77.10287933 * 180.0 / (math.Pi * math.Abs(-12.41)), Angle: -12.41},
+		{Type: "curve", Radius: 53.38887092 * 180.0 / (math.Pi * math.Abs(-12.22)), Angle: -12.22},
+		{Type: "curve", Radius: 50.69556778 * 180.0 / (math.Pi * math.Abs(-9.8)), Angle: -9.8},
+		{Type: "curve", Radius: 40.11646716 * 180.0 / (math.Pi * math.Abs(-14.37)), Angle: -14.37},
+		{Type: "curve", Radius: 58.34681333 * 180.0 / (math.Pi * math.Abs(-10.42)), Angle: -10.42},
+		{Type: "curve", Radius: 164.0812035 * 180.0 / (math.Pi * math.Abs(-4.92)), Angle: -4.92},
+		{Type: "curve", Radius: 57.27919767 * 180.0 / (math.Pi * math.Abs(-3.5)), Angle: -3.5},
+		{Type: "straight", Length: 140.4561631}, // -0.79 -> straight
+		{Type: "curve", Radius: 37.13199612 * 180.0 / (math.Pi * math.Abs(-7.19)), Angle: -7.19},
+		{Type: "curve", Radius: 27.21611129 * 180.0 / (math.Pi * math.Abs(-14.51)), Angle: -14.51},
+		{Type: "curve", Radius: 34.60045293 * 180.0 / (math.Pi * math.Abs(-7.59)), Angle: -7.59},
+		{Type: "curve", Radius: 32.58654157 * 180.0 / (math.Pi * math.Abs(-6.97)), Angle: -6.97},
+		{Type: "curve", Radius: 57.5056616 * 180.0 / (math.Pi * math.Abs(-6.7)), Angle: -6.7},
+		{Type: "curve", Radius: 56.75347784 * 180.0 / (math.Pi * math.Abs(-17.22)), Angle: -17.22},
+		{Type: "curve", Radius: 126.5771595 * 180.0 / (math.Pi * math.Abs(-15.51)), Angle: -15.51},
+		{Type: "straight", Length: 178.235199}, // -0.02 -> straight
+		{Type: "curve", Radius: 46.2633452 * 180.0 / (math.Pi * math.Abs(-3.88)), Angle: -3.88},
+		{Type: "curve", Radius: 30.45939825 * 180.0 / (math.Pi * math.Abs(-21.31)), Angle: -21.31},
+		{Type: "curve", Radius: 21.49789712 * 180.0 / (math.Pi * math.Abs(-28.1)), Angle: -28.1},
+		{Type: "curve", Radius: 22.12876092 * 180.0 / (math.Pi * math.Abs(-14.61)), Angle: -14.61},
+		{Type: "curve", Radius: 25.51763183 * 180.0 / (math.Pi * math.Abs(-27.61)), Angle: -27.61},
+		{Type: "curve", Radius: 44.83176965 * 180.0 / (math.Pi * math.Abs(-22.5)), Angle: -22.5},
+		{Type: "curve", Radius: 240.480427 * 180.0 / (math.Pi * math.Abs(-9.7)), Angle: -9.7},
+		{Type: "curve", Radius: 35.6357166 * 180.0 / (math.Pi * math.Abs(11.78)), Angle: 11.78},
+		{Type: "curve", Radius: 23.60886445 * 180.0 / (math.Pi * math.Abs(23.99)), Angle: 23.99},
+		{Type: "curve", Radius: 17.60757037 * 180.0 / (math.Pi * math.Abs(16.88)), Angle: 16.88},
+		{Type: "curve", Radius: 14.76868327 * 180.0 / (math.Pi * math.Abs(21.52)), Angle: 21.52},
+		{Type: "curve", Radius: 27.34551925 * 180.0 / (math.Pi * math.Abs(18.22)), Angle: 18.22},
+		{Type: "curve", Radius: 28.32416694 * 180.0 / (math.Pi * math.Abs(12.98)), Angle: 12.98},
+		{Type: "curve", Radius: 39.52604335 * 180.0 / (math.Pi * math.Abs(9.65)), Angle: 9.65},
+		{Type: "curve", Radius: 30.42704626 * 180.0 / (math.Pi * math.Abs(6.08)), Angle: 6.08},
+		{Type: "curve", Radius: 23.30152054 * 180.0 / (math.Pi * math.Abs(-20.78)), Angle: -20.78},
+		{Type: "curve", Radius: 16.37010676 * 180.0 / (math.Pi * math.Abs(-22.42)), Angle: -22.42},
+		{Type: "curve", Radius: 16.83921061 * 180.0 / (math.Pi * math.Abs(-18.81)), Angle: -18.81},
+		{Type: "curve", Radius: 24.991912 * 180.0 / (math.Pi * math.Abs(-11.03)), Angle: -11.03},
+		{Type: "curve", Radius: 31.01747007 * 180.0 / (math.Pi * math.Abs(-19.6)), Angle: -19.6},
+		{Type: "curve", Radius: 133.4196053 * 180.0 / (math.Pi * math.Abs(-2.39)), Angle: -2.39},
+		{Type: "curve", Radius: 32.74021352 * 180.0 / (math.Pi * math.Abs(7.71)), Angle: 7.71},
+		{Type: "curve", Radius: 19.58104173 * 180.0 / (math.Pi * math.Abs(20.47)), Angle: 20.47},
+		{Type: "curve", Radius: 18.71562601 * 180.0 / (math.Pi * math.Abs(23.65)), Angle: 23.65},
+		{Type: "curve", Radius: 21.64348107 * 180.0 / (math.Pi * math.Abs(18.53)), Angle: 18.53},
+		{Type: "curve", Radius: 23.03461663 * 180.0 / (math.Pi * math.Abs(20.62)), Angle: 20.62},
+		{Type: "curve", Radius: 211.0562925 * 180.0 / (math.Pi * math.Abs(6.05)), Angle: 6.05},
+		{Type: "curve", Radius: 43.4244581 * 180.0 / (math.Pi * math.Abs(11.3)), Angle: 11.3},
+		{Type: "curve", Radius: 22.78388871 * 180.0 / (math.Pi * math.Abs(20.69)), Angle: 20.69},
+		{Type: "curve", Radius: 35.44969266 * 180.0 / (math.Pi * math.Abs(10.49)), Angle: 10.49},
+		{Type: "curve", Radius: 31.27628599 * 180.0 / (math.Pi * math.Abs(-8.83)), Angle: -8.83},
+		{Type: "curve", Radius: 26.26981559 * 180.0 / (math.Pi * math.Abs(-29.27)), Angle: -29.27},
+		{Type: "curve", Radius: 40.17308314 * 180.0 / (math.Pi * math.Abs(-28.45)), Angle: -28.45},
+		{Type: "curve", Radius: 134.0909091 * 180.0 / (math.Pi * math.Abs(-2.4)), Angle: -2.4},
+		{Type: "curve", Radius: 51.11614364 * 180.0 / (math.Pi * math.Abs(-11.27)), Angle: -11.27},
+		{Type: "curve", Radius: 38.88709156 * 180.0 / (math.Pi * math.Abs(-21.34)), Angle: -21.34},
+		{Type: "curve", Radius: 46.00452928 * 180.0 / (math.Pi * math.Abs(-27.22)), Angle: -27.22},
+		{Type: "curve", Radius: 212.2533161 * 180.0 / (math.Pi * math.Abs(-5.71)), Angle: -5.71},
+		{Type: "straight", Length: 326.918473}, // -0.86 -> straight
+		{Type: "curve", Radius: 33.59754125 * 180.0 / (math.Pi * math.Abs(-16.71)), Angle: -16.71},
+		{Type: "curve", Radius: 27.92785506 * 180.0 / (math.Pi * math.Abs(-25.6)), Angle: -25.6},
+		{Type: "curve", Radius: 27.00582336 * 180.0 / (math.Pi * math.Abs(-30.42)), Angle: -30.42},
+		{Type: "curve", Radius: 20.07440958 * 180.0 / (math.Pi * math.Abs(-22.14)), Angle: -22.14},
+		{Type: "curve", Radius: 21.78906503 * 180.0 / (math.Pi * math.Abs(-8.64)), Angle: -8.64},
+		{Type: "curve", Radius: 18.02005823 * 180.0 / (math.Pi * math.Abs(-11.86)), Angle: -11.86},
+	}
 }
 
 func trackTelemetryHandler(w http.ResponseWriter, r *http.Request) {
@@ -396,6 +389,9 @@ func buildTelemetryOneLapWithWraparound(
 	distance := 0.0
 	profileIdx := 0
 	points = append(points, telemetryPoint{X: x, Y: y, Speed: v, Accel: 0, Distance: distance})
+	// save the initial pose so we can convincingly close the lap later if
+	// numerical sampling leaves a small gap between the end and the start.
+	initialX, initialY := x, y
 
 	for _, seg := range segments {
 		switch seg.Type {
@@ -562,6 +558,20 @@ func buildTelemetryOneLapWithWraparound(
 				profileIdx++
 			}
 		}
+	}
+
+	// If the final point doesn't exactly match the starting point (small
+	// numerical drift from sampling), snap the final telemetry point to the
+	// starting position so the visual path closes cleanly. This avoids
+	// changing track geometry and doesn't increase the point count.
+	gap := math.Hypot(x-initialX, y-initialY)
+	if gap > 1e-6 && len(points) > 0 {
+		lastIdx := len(points) - 1
+		points[lastIdx].X = initialX
+		points[lastIdx].Y = initialY
+		points[lastIdx].Accel = 0
+		// Optionally adjust distance to reflect the chord closure; keep it
+		// as the sampled distance to avoid altering physics outputs.
 	}
 
 	return points, nil
