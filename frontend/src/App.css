@@ -266,5 +266,21 @@ button:hover {
 }
 
 .inputs-block {
-  margin-top: 14px; 
+  margin-top: 14px;
+}
+
+/* Loading spinner shown while simulation is calculating */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.spinner {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2.5px solid rgba(214, 74, 58, 0.25);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 650ms linear infinite;
+  flex-shrink: 0;
 }

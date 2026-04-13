@@ -296,6 +296,7 @@ function App() {
   }))
   const [telemetryAdditionalEfficiency, setTelemetryAdditionalEfficiency] = useState(0)
 
+  const [isLoading, setIsLoading] = useState(false)
   const [result, setResult] = useState('--')
   const [status, setStatus] = useState('')
   const [trackStatus, setTrackStatus] = useState('Loading track...')
@@ -531,6 +532,7 @@ function App() {
     }
     payload[additionalEfficiency.name] = effValue
 
+    setIsLoading(true)
     try {
       const data = await postSimulation(payload, wraparoundEnabled)
 
@@ -542,6 +544,8 @@ function App() {
       setStatus('Success.')
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Network error. Is the server running?')
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -679,7 +683,12 @@ function App() {
           ) : null}
 
           <div className="actions">
-            <button type="submit">Compute Distance</button>
+            <button type="submit" disabled={isLoading}>
+              {isLoading ? 'Computing…' : 'Compute Distance'}
+            </button>
+            {isLoading && (
+              <span className="spinner" role="status" aria-label="Calculating simulation…" />
+            )}
             <div className="result">
               Distance: <strong>{result}</strong> m
             </div>
