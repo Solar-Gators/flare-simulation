@@ -94,7 +94,7 @@ function binTelemetry(
 
 export default function TelemetryGraph({ telemetry, additionalEfficiency }: Props) {
   const [selectedIndex, setSelectedIndex] = useState(0)
-  const [showAll, setShowAll] = useState(false)
+  const [showAll, setShowAll] = useState(true)
   const [normalize100, setNormalize100] = useState(false)
 
   const options = useMemo(() => telemetry.map((p, i) => ({ i, label: `${i}: ${p.distance.toFixed(1)} m` })), [telemetry])

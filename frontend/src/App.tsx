@@ -19,6 +19,7 @@ type TelemetryPoint = {
 type SimulateResponse = {
   distanceM?: number
   optimalV?: number
+  remainingEnergyWh?: number
   points?: TelemetryPoint[]
   ok?: boolean
   message?: string
@@ -76,8 +77,8 @@ const initialFields: FieldDef[] = [
 ]
 
 const ABS_COLOR_MIN_SPEED = 0.0
-const ABS_COLOR_MAX_SPEED = 24.0
-const ABS_COLOR_TICKS = [0, 6, 12, 18, 24] as const
+const ABS_COLOR_MAX_SPEED = 28.0
+const ABS_COLOR_TICKS = [0, 7, 14, 21, 28] as const
 
 const DISTANCE_FIELD_NAMES = new Set([
   'batteryWh',
@@ -100,10 +101,10 @@ const DISTANCE_FIELD_NAMES = new Set([
 
 const ABS_SPEED_COLOR_STOPS = [
   { speed: 0, color: [25, 50, 95] },
-  { speed: 6, color: [37, 99, 235] },
-  { speed: 12, color: [6, 182, 212] },
-  { speed: 18, color: [245, 158, 11] },
-  { speed: 24, color: [220, 38, 38] },
+  { speed: 7, color: [37, 99, 235] },
+  { speed: 14, color: [6, 182, 212] },
+  { speed: 21, color: [245, 158, 11] },
+  { speed: 28, color: [220, 38, 38] },
 ] as const
 
 function clamp(value: number, min: number, max: number): number {
@@ -246,7 +247,12 @@ function formatTrackStatus(pointCount: number, wraparoundEnabled: boolean): stri
 async function postSimulation(
   inputs: Record<string, number>,
   wraparoundEnabled: boolean,
-): Promise<{ distanceM: number; points: TelemetryPoint[]; optimalV: number | null }> {
+): Promise<{
+  distanceM: number
+  points: TelemetryPoint[]
+  optimalV: number | null
+  remainingEnergyWh: number | null
+}> {
   let response: Response
 
   try {
@@ -275,7 +281,12 @@ async function postSimulation(
     throw new Error(data.message || 'Request failed.')
   }
 
-  return { distanceM: data.distanceM, points: data.points, optimalV: data.optimalV ?? null }
+  return {
+    distanceM: data.distanceM,
+    points: data.points,
+    optimalV: data.optimalV ?? null,
+    remainingEnergyWh: data.remainingEnergyWh ?? null,
+  }
 }
 
 function App() {
@@ -294,7 +305,10 @@ function App() {
   const [telemetryAdditionalEfficiency, setTelemetryAdditionalEfficiency] = useState(0)
 
   const [result, setResult] = useState('--')
+  const [rawDistanceM, setRawDistanceM] = useState<number | null>(null)
+  const [remainingEnergyWh, setRemainingEnergyWh] = useState<number | null>(null)
   const [optimalSpeedMps, setOptimalSpeedMps] = useState<number | null>(null)
+  const [graphsOpen, setGraphsOpen] = useState(false)
   const [status, setStatus] = useState('')
   const [trackStatus, setTrackStatus] = useState('Loading track...')
   const [telemetry, setTelemetry] = useState<TelemetryPoint[]>([])
@@ -423,7 +437,10 @@ function App() {
           const data = await postSimulation(lastSimulationInputs, wraparoundEnabled)
 
           if (isMounted) {
-            setResult(Number(data.distanceM).toFixed(2))
+            const lapLen = data.points.length > 0 ? data.points[data.points.length - 1].distance : 0
+            setResult(lapLen > 0 ? (data.distanceM / lapLen).toFixed(2) : '--')
+            setRawDistanceM(data.distanceM)
+            setRemainingEnergyWh(data.remainingEnergyWh)
             setOptimalSpeedMps(data.optimalV)
             setTelemetry(data.points)
             setTelemetryAdditionalEfficiency(lastSimulationInputs.additionalEfficiency ?? 0)
@@ -534,7 +551,10 @@ function App() {
       const data = await postSimulation(payload, wraparoundEnabled)
 
       lastSimulationInputsRef.current = payload
-      setResult(data.distanceM.toFixed(2))
+      const lapLen = data.points.length > 0 ? data.points[data.points.length - 1].distance : 0
+      setResult(lapLen > 0 ? (data.distanceM / lapLen).toFixed(2) : '--')
+      setRawDistanceM(data.distanceM)
+      setRemainingEnergyWh(data.remainingEnergyWh)
       setOptimalSpeedMps(data.optimalV)
       setTelemetry(data.points)
       setTelemetryAdditionalEfficiency(effValue)
@@ -681,8 +701,13 @@ function App() {
           <div className="actions">
             <button type="submit">Compute Distance</button>
             <div className="result">
-              Distance: <strong>{result}</strong> m
+              Laps: <strong>{result}</strong>
             </div>
+            {rawDistanceM !== null ? (
+              <div className="result">
+                Distance: <strong>{rawDistanceM.toFixed(2)}</strong> m
+              </div>
+            ) : null}
             {optimalSpeedMps !== null ? (
               <div className="result">
                 Optimal speed: <strong>{optimalSpeedMps.toFixed(2)}</strong> m/s
@@ -790,11 +815,33 @@ function App() {
             m/s
           </div>
         ) : null}
+        {rawDistanceM !== null || remainingEnergyWh !== null ? (
+          <div className="track-meta">
+            {rawDistanceM !== null ? (
+              <span>
+                Distance: <strong>{rawDistanceM.toFixed(2)}</strong> m
+              </span>
+            ) : null}
+            {rawDistanceM !== null && remainingEnergyWh !== null ? ' · ' : null}
+            {remainingEnergyWh !== null ? (
+              <span>
+                Remaining energy: <strong>{remainingEnergyWh.toFixed(1)}</strong> Wh
+              </span>
+            ) : null}
+          </div>
+        ) : null}
         <div style={{ marginTop: 12 }}>
-          <TelemetryGraph
-            telemetry={telemetry}
-            additionalEfficiency={telemetryAdditionalEfficiency}
-          />
+          <button type="button" className="toggle" onClick={() => setGraphsOpen((v) => !v)}>
+            {graphsOpen ? 'Hide graphs' : 'Show graphs'}
+          </button>
+          {graphsOpen ? (
+            <div style={{ marginTop: 8 }}>
+              <TelemetryGraph
+                telemetry={telemetry}
+                additionalEfficiency={telemetryAdditionalEfficiency}
+              />
+            </div>
+          ) : null}
         </div>
       </section>
 

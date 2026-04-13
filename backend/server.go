@@ -22,10 +22,11 @@ import (
 type distanceRequest = simulationInputs
 
 type distanceResponse struct {
-	DistanceM float64 `json:"distanceM"`
-	OptimalV  float64 `json:"optimalV"`
-	OK        bool    `json:"ok"`
-	Message   string  `json:"message,omitempty"`
+	DistanceM         float64 `json:"distanceM"`
+	OptimalV          float64 `json:"optimalV"`
+	RemainingEnergyWh float64 `json:"remainingEnergyWh"`
+	OK                bool    `json:"ok"`
+	Message           string  `json:"message,omitempty"`
 }
 
 type simulateRequest struct {
@@ -34,11 +35,12 @@ type simulateRequest struct {
 }
 
 type simulateResponse struct {
-	DistanceM float64          `json:"distanceM"`
-	OptimalV  float64          `json:"optimalV"`
-	Points    []telemetryPoint `json:"points"`
-	OK        bool             `json:"ok"`
-	Message   string           `json:"message,omitempty"`
+	DistanceM         float64          `json:"distanceM"`
+	OptimalV          float64          `json:"optimalV"`
+	RemainingEnergyWh float64          `json:"remainingEnergyWh"`
+	Points            []telemetryPoint `json:"points"`
+	OK                bool             `json:"ok"`
+	Message           string           `json:"message,omitempty"`
 }
 
 type trackSegment struct {
@@ -134,7 +136,7 @@ func distanceHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, distanceResponse{DistanceM: distance, OptimalV: req.V, OK: true})
+	writeJSON(w, http.StatusOK, distanceResponse{DistanceM: distance, OptimalV: req.V, RemainingEnergyWh: remainingEnergyForInputs(req), OK: true})
 }
 
 func simulateHandler(w http.ResponseWriter, r *http.Request) {
@@ -179,7 +181,7 @@ func simulateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, simulateResponse{DistanceM: distance, OptimalV: req.Inputs.V, Points: points, OK: true})
+	writeJSON(w, http.StatusOK, simulateResponse{DistanceM: distance, OptimalV: req.Inputs.V, RemainingEnergyWh: remainingEnergyForInputs(req.Inputs), Points: points, OK: true})
 }
 
 func validateSimulationInputs(req simulationInputs) error {
@@ -865,6 +867,34 @@ func coastDecel(
 	pRes := PowerRequired(v, m, g, Crr, rho, Cd, A, theta, additionalEfficiency)
 	fRes := pRes / vEff
 	return -fRes / m
+}
+
+// remainingEnergyForInputs computes how many Wh remain in the battery at race
+// end after running at the given inputs.V cruise speed for the full race.
+func remainingEnergyForInputs(inputs simulationInputs) float64 {
+	v := inputs.V
+	if v <= 0 || inputs.EtaDrive <= 0 {
+		return inputs.BatteryWh
+	}
+	Preq := PowerRequired(v, inputs.M, inputs.G, inputs.Crr, inputs.Rho, inputs.Cd, inputs.A, inputs.Theta, inputs.AdditionalEfficiency)
+	Tsec := inputs.RaceDayMin * 60.0
+	EbattWheelJ := inputs.BatteryWh * 3600.0 * inputs.EtaDrive
+	PsolarWheel := inputs.SolarWhPerMin * 60.0 * inputs.EtaDrive
+
+	// Solar alone covers all demand — battery fully intact
+	if Preq <= PsolarWheel {
+		return inputs.BatteryWh
+	}
+
+	drain := Preq - PsolarWheel
+	tEnd := EbattWheelJ / drain
+	if tEnd > Tsec {
+		// Time-limited: battery not fully depleted
+		remainingJ := EbattWheelJ - drain*Tsec
+		return remainingJ / (3600.0 * inputs.EtaDrive)
+	}
+	// Battery-depleted before time is up
+	return 0
 }
 
 // computeOptimalSpeedForInputs sweeps cruise speed from 2–40 m/s, then refines
