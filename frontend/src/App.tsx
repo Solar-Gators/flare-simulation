@@ -18,6 +18,7 @@ type TelemetryPoint = {
 
 type SimulateResponse = {
   distanceM?: number
+  optimalV?: number
   points?: TelemetryPoint[]
   ok?: boolean
   message?: string
@@ -60,7 +61,6 @@ type FieldDef = {
 
 // input fields for distance calculator (no solarWhPerMin, no raceDayMin, no batteryWh here)
 const initialFields: FieldDef[] = [
-  { name: 'v', label: 'Baseline Velocity (m/s)', step: '0.1', value: '' },
   { name: 'etaDrive', label: 'Drivetrain Efficiency (%)', step: '0.01', value: '' },
   { name: 'rWheel', label: 'Wheel Radius (m)', step: '0.0001', value: '' },
   { name: 'tMax', label: 'Max Motor Torque (N·m)', step: '0.1', value: '' },
@@ -80,7 +80,6 @@ const ABS_COLOR_MAX_SPEED = 24.0
 const ABS_COLOR_TICKS = [0, 6, 12, 18, 24] as const
 
 const DISTANCE_FIELD_NAMES = new Set([
-  'v',
   'batteryWh',
   'additionalEfficiency',
   'solarWhPerMin',
@@ -148,8 +147,6 @@ function createFieldFromValue(field: FieldDef, value: number): FieldDef {
 function createFieldsFromInputs(inputs: SimulationInputs): FieldDef[] {
   return initialFields.map((field) => {
     switch (field.name) {
-      case 'v':
-        return createFieldFromValue(field, inputs.v)
       case 'etaDrive':
         return createFieldFromValue(field, inputs.etaDrive)
       case 'rWheel':
@@ -249,7 +246,7 @@ function formatTrackStatus(pointCount: number, wraparoundEnabled: boolean): stri
 async function postSimulation(
   inputs: Record<string, number>,
   wraparoundEnabled: boolean,
-): Promise<{ distanceM: number; points: TelemetryPoint[] }> {
+): Promise<{ distanceM: number; points: TelemetryPoint[]; optimalV: number | null }> {
   let response: Response
 
   try {
@@ -278,7 +275,7 @@ async function postSimulation(
     throw new Error(data.message || 'Request failed.')
   }
 
-  return { distanceM: data.distanceM, points: data.points }
+  return { distanceM: data.distanceM, points: data.points, optimalV: data.optimalV ?? null }
 }
 
 function App() {
@@ -297,6 +294,7 @@ function App() {
   const [telemetryAdditionalEfficiency, setTelemetryAdditionalEfficiency] = useState(0)
 
   const [result, setResult] = useState('--')
+  const [optimalSpeedMps, setOptimalSpeedMps] = useState<number | null>(null)
   const [status, setStatus] = useState('')
   const [trackStatus, setTrackStatus] = useState('Loading track...')
   const [telemetry, setTelemetry] = useState<TelemetryPoint[]>([])
@@ -426,6 +424,7 @@ function App() {
 
           if (isMounted) {
             setResult(Number(data.distanceM).toFixed(2))
+            setOptimalSpeedMps(data.optimalV)
             setTelemetry(data.points)
             setTelemetryAdditionalEfficiency(lastSimulationInputs.additionalEfficiency ?? 0)
             setTrackStatus(formatTrackStatus(data.points.length, wraparoundEnabled))
@@ -536,6 +535,7 @@ function App() {
 
       lastSimulationInputsRef.current = payload
       setResult(data.distanceM.toFixed(2))
+      setOptimalSpeedMps(data.optimalV)
       setTelemetry(data.points)
       setTelemetryAdditionalEfficiency(effValue)
       setTrackStatus(formatTrackStatus(data.points.length, wraparoundEnabled))
@@ -683,6 +683,11 @@ function App() {
             <div className="result">
               Distance: <strong>{result}</strong> m
             </div>
+            {optimalSpeedMps !== null ? (
+              <div className="result">
+                Optimal speed: <strong>{optimalSpeedMps.toFixed(2)}</strong> m/s
+              </div>
+            ) : null}
             <div className="status">{status}</div>
           </div>
         </form>

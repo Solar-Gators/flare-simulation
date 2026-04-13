@@ -3,7 +3,7 @@ package main
 const defaultPresetID = "flare-default"
 
 type simulationInputs struct {
-	V                    float64 `json:"v"`
+	V                    float64 `json:"-"` // computed server-side; not accepted from client
 	BatteryWh            float64 `json:"batteryWh"`
 	SolarWhPerMin        float64 `json:"solarWhPerMin"`
 	EtaDrive             float64 `json:"etaDrive"`
@@ -38,7 +38,6 @@ var simulationPresets = []simulationPreset{
 		ID:    "flare-default",
 		Label: "Flare (default)",
 		Inputs: simulationInputs{
-			V:                    20,
 			BatteryWh:            5000,
 			SolarWhPerMin:        5,
 			EtaDrive:             0.90,
@@ -61,7 +60,6 @@ var simulationPresets = []simulationPreset{
 		ID:    "lexus-gs350-awd",
 		Label: "2008 Lexus GS350 AWD (215/55R17 road tires)",
 		Inputs: simulationInputs{
-			V:                    20,
 			BatteryWh:            656000,
 			SolarWhPerMin:        5,
 			EtaDrive:             0.22,
