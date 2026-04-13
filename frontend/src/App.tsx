@@ -14,6 +14,7 @@ type TelemetryPoint = {
   speed: number
   accel: number
   distance: number
+  curveSpeedCap: number
 }
 
 type SimulateResponse = {
@@ -34,6 +35,7 @@ type TrackSegment = {
   color: string
   x: number
   y: number
+  curveSpeedCap: number
 }
 
 type HoverPoint = {
@@ -49,6 +51,7 @@ type TooltipState = {
   speed: number
   accel: number
   distance: number
+  curveSpeedCap: number
 }
 
 type FieldDef = {
@@ -324,6 +327,7 @@ function App() {
     speed: 0,
     accel: 0,
     distance: 0,
+    curveSpeedCap: 0,
   })
 
   const selectedPreset = presets.find((preset) => preset.id === selectedPresetId) ?? null
@@ -411,6 +415,7 @@ function App() {
         color: speedToColor(point.speed),
         x: point.x,
         y: point.y,
+        curveSpeedCap: point.curveSpeedCap,
       }
     })
 
@@ -573,6 +578,7 @@ function App() {
     x: number,
     y: number,
     color: string,
+    curveSpeedCap: number,
   ) => {
     setTooltip({
       visible: true,
@@ -581,6 +587,7 @@ function App() {
       speed,
       accel,
       distance,
+      curveSpeedCap,
     })
     setHoverPoint({ x, y, color })
   }
@@ -742,7 +749,7 @@ function App() {
                 strokeLinecap="round"
                 pointerEvents="stroke"
                 onMouseMove={(e) =>
-                  handleSegmentMove(e, seg.speed, seg.accel, seg.distance, seg.x, seg.y, seg.color)
+                  handleSegmentMove(e, seg.speed, seg.accel, seg.distance, seg.x, seg.y, seg.color, seg.curveSpeedCap)
                 }
                 onMouseLeave={handleSegmentLeave}
               />
@@ -854,6 +861,9 @@ function App() {
         </div>
         <div>Accel: {tooltip.accel.toFixed(3)} m/s²</div>
         <div>Dist: {tooltip.distance.toFixed(1)} m</div>
+        {tooltip.curveSpeedCap > 0 ? (
+          <div>Curve max: {tooltip.curveSpeedCap.toFixed(2)} m/s</div>
+        ) : null}
       </div>
     </div>
   )

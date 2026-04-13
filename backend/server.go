@@ -56,11 +56,12 @@ type trackResponse struct {
 }
 
 type telemetryPoint struct {
-	X        float64 `json:"x"`
-	Y        float64 `json:"y"`
-	Speed    float64 `json:"speed"`
-	Accel    float64 `json:"accel"`
-	Distance float64 `json:"distance"`
+	X             float64 `json:"x"`
+	Y             float64 `json:"y"`
+	Speed         float64 `json:"speed"`
+	Accel         float64 `json:"accel"`
+	Distance      float64 `json:"distance"`
+	CurveSpeedCap float64 `json:"curveSpeedCap"` // 0 on straights; sqrt(gmax*g*r) on curves
 }
 
 type telemetryResponse struct {
@@ -550,7 +551,7 @@ func buildTelemetryOneLapWithWraparoundForInputs(
 				x += ds * math.Cos(heading)
 				y += ds * math.Sin(heading)
 				distance += ds
-				points = append(points, telemetryPoint{X: x, Y: y, Speed: vNext, Accel: a, Distance: distance})
+				points = append(points, telemetryPoint{X: x, Y: y, Speed: vNext, Accel: a, Distance: distance, CurveSpeedCap: 0})
 				v = vNext
 				remaining -= ds
 				profileIdx++
@@ -561,7 +562,7 @@ func buildTelemetryOneLapWithWraparoundForInputs(
 			}
 			if seg.Radius == 0 {
 				heading += seg.Angle * math.Pi / 180.0
-				points = append(points, telemetryPoint{X: x, Y: y, Speed: v, Accel: 0, Distance: distance})
+				points = append(points, telemetryPoint{X: x, Y: y, Speed: v, Accel: 0, Distance: distance, CurveSpeedCap: 0})
 				continue
 			}
 			aLatMax := inputs.Gmax * inputs.G
@@ -652,7 +653,7 @@ func buildTelemetryOneLapWithWraparoundForInputs(
 				if vNext > brakeSpeed {
 					vNext = brakeSpeed
 				}
-				points = append(points, telemetryPoint{X: x, Y: y, Speed: vNext, Accel: a, Distance: distance})
+				points = append(points, telemetryPoint{X: x, Y: y, Speed: vNext, Accel: a, Distance: distance, CurveSpeedCap: vCap})
 				v = vNext
 				remaining -= ds
 				profileIdx++
