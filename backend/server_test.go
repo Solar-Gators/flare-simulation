@@ -46,9 +46,11 @@ func TestDistanceForInputsUsesAdditionalEfficiency(t *testing.T) {
 	base := defaultSimulationInputs()
 	base.BatteryWh = 100
 	base.AdditionalEfficiency = 0
+	base.V = computeOptimalSpeedForInputs(base)
 
 	penalized := base
 	penalized.AdditionalEfficiency = 10
+	penalized.V = computeOptimalSpeedForInputs(penalized)
 
 	baseDistance, ok := distanceForInputs(base)
 	if !ok {

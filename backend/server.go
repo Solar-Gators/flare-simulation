@@ -23,6 +23,7 @@ type distanceRequest = simulationInputs
 
 type distanceResponse struct {
 	DistanceM float64 `json:"distanceM"`
+	OptimalV  float64 `json:"optimalV"`
 	OK        bool    `json:"ok"`
 	Message   string  `json:"message,omitempty"`
 }
@@ -34,6 +35,7 @@ type simulateRequest struct {
 
 type simulateResponse struct {
 	DistanceM float64          `json:"distanceM"`
+	OptimalV  float64          `json:"optimalV"`
 	Points    []telemetryPoint `json:"points"`
 	OK        bool             `json:"ok"`
 	Message   string           `json:"message,omitempty"`
@@ -123,6 +125,8 @@ func distanceHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, distanceResponse{OK: false, Message: err.Error()})
 		return
 	}
+	//compute optimal cruise speed for these inputs
+	req.V = computeOptimalSpeedForInputs(req)
 	//run sim if everything is valid
 	distance, ok := distanceForInputs(req)
 	if !ok {
@@ -130,7 +134,7 @@ func distanceHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, distanceResponse{DistanceM: distance, OK: true})
+	writeJSON(w, http.StatusOK, distanceResponse{DistanceM: distance, OptimalV: req.V, OK: true})
 }
 
 func simulateHandler(w http.ResponseWriter, r *http.Request) {
@@ -160,6 +164,9 @@ func simulateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	//compute optimal cruise speed for these inputs
+	req.Inputs.V = computeOptimalSpeedForInputs(req.Inputs)
+
 	distance, ok := distanceForInputs(req.Inputs)
 	if !ok {
 		writeJSON(w, http.StatusBadRequest, simulateResponse{OK: false, Message: "inputs are not feasible for the model"})
@@ -172,11 +179,11 @@ func simulateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, simulateResponse{DistanceM: distance, Points: points, OK: true})
+	writeJSON(w, http.StatusOK, simulateResponse{DistanceM: distance, OptimalV: req.Inputs.V, Points: points, OK: true})
 }
 
 func validateSimulationInputs(req simulationInputs) error {
-	if req.V <= 0 || req.BatteryWh <= 0 || req.EtaDrive <= 0 || req.RaceDayMin <= 0 ||
+	if req.BatteryWh <= 0 || req.EtaDrive <= 0 || req.RaceDayMin <= 0 ||
 		req.RWheel <= 0 || req.Tmax <= 0 || req.Pmax <= 0 || req.M <= 0 || req.G <= 0 ||
 		req.Crr < 0 || req.Rho <= 0 || req.Cd <= 0 || req.A <= 0 || req.Gmax <= 0 ||
 		req.AdditionalEfficiency < -100 || req.AdditionalEfficiency > 100 {
@@ -860,10 +867,10 @@ func coastDecel(
 	return -fRes / m
 }
 
-// brought the function from flare_sim file to here ...
-func computeOptimalSpeed() float64 {
-	inputs := defaultSimulationInputs()
-
+// computeOptimalSpeedForInputs sweeps cruise speed from 2–40 m/s, then refines
+// ±2 m/s around the coarse best at 0.1 m/s resolution to find the speed that
+// maximises distance for the given energy budget and race time.
+func computeOptimalSpeedForInputs(inputs simulationInputs) float64 {
 	bestV, bestD := 0.0, 0.0
 	for v := 2.0; v <= 40.0; v += 0.5 {
 		if d, ok := DistanceForSpeedEV(
@@ -912,4 +919,9 @@ func computeOptimalSpeed() float64 {
 	}
 
 	return bestV
+}
+
+// computeOptimalSpeed returns the optimal cruise speed for the default preset.
+func computeOptimalSpeed() float64 {
+	return computeOptimalSpeedForInputs(defaultSimulationInputs())
 }

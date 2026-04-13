@@ -1,5 +1,4 @@
 export type SimulationInputs = {
-  v: number
   batteryWh: number
   solarWhPerMin: number
   etaDrive: number
