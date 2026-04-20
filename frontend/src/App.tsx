@@ -237,8 +237,18 @@ const ABS_SPEED_LEGEND_GRADIENT = `linear-gradient(90deg, ${ABS_SPEED_COLOR_STOP
   return `${rgbToCss(stop.color)} ${offset.toFixed(1)}%`
 }).join(', ')})`
 
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080').replace(
+  /\/+$/,
+  '',
+)
+
+function apiUrl(path: string): string {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`
+  return `${API_BASE_URL}${normalizedPath}`
+}
+
 function telemetryUrl(wraparoundEnabled: boolean): string {
-  const url = new URL('http://localhost:8080/track/telemetry')
+  const url = new URL(apiUrl('/track/telemetry'))
   url.searchParams.set('wraparound', String(wraparoundEnabled))
   return url.toString()
 }
@@ -259,7 +269,7 @@ async function postSimulation(
   let response: Response
 
   try {
-    response = await fetch('http://localhost:8080/simulate', {
+    response = await fetch(apiUrl('/simulate'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ inputs, wraparound: wraparoundEnabled }),
