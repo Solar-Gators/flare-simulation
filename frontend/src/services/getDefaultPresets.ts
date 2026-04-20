@@ -28,9 +28,19 @@ export type DefaultPresetsResponse = {
   presets: SimulationPreset[]
 }
 
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080').replace(
+  /\/+$/,
+  '',
+)
+
+function apiUrl(path: string): string {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`
+  return `${API_BASE_URL}${normalizedPath}`
+}
+
 export async function getDefaultPresets(): Promise<DefaultPresetsResponse> {
   try {
-    const response = await fetch('http://localhost:8080/defaults')
+    const response = await fetch(apiUrl('/defaults'))
 
     if (!response.ok) {
       throw new Error(`Failed to fetch default presets: ${response.status}`)
