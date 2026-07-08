@@ -6,6 +6,7 @@ type simulationInputs struct {
 	V                    float64 `json:"-"` // computed server-side; not accepted from client
 	BatteryWh            float64 `json:"batteryWh"`
 	SolarWhPerMin        float64 `json:"solarWhPerMin"`
+	CloudinessFactor     float64 `json:"cloudinessFactor"`
 	EtaDrive             float64 `json:"etaDrive"`
 	RaceDayMin           float64 `json:"raceDayMin"`
 	RWheel               float64 `json:"rWheel"`
@@ -40,6 +41,7 @@ var simulationPresets = []simulationPreset{
 		Inputs: simulationInputs{
 			BatteryWh:            5000,
 			SolarWhPerMin:        5,
+			CloudinessFactor:     1.0,
 			EtaDrive:             0.90,
 			RaceDayMin:           480,
 			RWheel:               0.2792,
@@ -62,6 +64,7 @@ var simulationPresets = []simulationPreset{
 		Inputs: simulationInputs{
 			BatteryWh:            656000,
 			SolarWhPerMin:        5,
+			CloudinessFactor:     1.0,
 			EtaDrive:             0.22,
 			RaceDayMin:           480,
 			RWheel:               0.334,

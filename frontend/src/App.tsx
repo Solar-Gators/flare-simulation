@@ -21,6 +21,8 @@ type SimulateResponse = {
   distanceM?: number
   optimalV?: number
   remainingEnergyWh?: number
+  forecastEnergyWh?: number
+  forecastBatteryWh?: number
   points?: TelemetryPoint[]
   ok?: boolean
   message?: string
@@ -129,12 +131,28 @@ const initialBatteryWh: FieldDef = {
 }
 const initialAdditionalEfficiency: FieldDef = {
   name: 'additionalEfficiency',
-  label: 'Additional Efficiency (%)',
+  label: 'Additional Motor Inefficiency (%)',
   step: '1',
   value: '',
   min: '-100.00',
   max: '100.00',
 }
+const initialRolloverCoefficient: FieldDef = {
+  name: 'rolloverCoefficient',
+  label: 'Additional Rollover Coefficient',
+  step: '0.01',
+  value: '0.5',
+  min: '0.0',
+  max: '10.0',
+}
+
+const cloudinessOptions = [
+  { label: 'Fully Cloudy', value: 0.15 },
+  { label: 'Mostly Cloudy', value: 0.35 },
+  { label: 'Partially Cloudy', value: 0.6 },
+  { label: 'Barely Cloudy', value: 0.85 },
+  { label: 'Sunny', value: 1.0 },
+] as const
 
 function createBlankField(field: FieldDef): FieldDef {
   return { ...field }
@@ -186,6 +204,7 @@ function createFormStateFromInputs(inputs: SimulationInputs): {
   batteryWh: FieldDef
   raceDayMin: FieldDef
   additionalEfficiency: FieldDef
+  rolloverCoefficient: FieldDef
 } {
   return {
     fields: createFieldsFromInputs(inputs),
@@ -195,6 +214,7 @@ function createFormStateFromInputs(inputs: SimulationInputs): {
       initialAdditionalEfficiency,
       inputs.additionalEfficiency,
     ),
+    rolloverCoefficient: createBlankField(initialRolloverCoefficient),
   }
 }
 
@@ -237,6 +257,34 @@ const ABS_SPEED_LEGEND_GRADIENT = `linear-gradient(90deg, ${ABS_SPEED_COLOR_STOP
   return `${rgbToCss(stop.color)} ${offset.toFixed(1)}%`
 }).join(', ')})`
 
+const METERS_PER_MILE = 1609.344
+const MPS_TO_MPH = 2.2369362920544
+const MPS2_TO_FTPS2 = 3.280839895013123
+
+function distanceUnitLabel(imperialUnits: boolean): string {
+  return imperialUnits ? 'mi' : 'm'
+}
+
+function speedUnitLabel(imperialUnits: boolean): string {
+  return imperialUnits ? 'mph' : 'm/s'
+}
+
+function accelUnitLabel(imperialUnits: boolean): string {
+  return imperialUnits ? 'ft/s²' : 'm/s²'
+}
+
+function convertDistance(value: number, imperialUnits: boolean): number {
+  return imperialUnits ? value / METERS_PER_MILE : value
+}
+
+function convertSpeed(value: number, imperialUnits: boolean): number {
+  return imperialUnits ? value * MPS_TO_MPH : value
+}
+
+function convertAccel(value: number, imperialUnits: boolean): number {
+  return imperialUnits ? value * MPS2_TO_FTPS2 : value
+}
+
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080').replace(
   /\/+$/,
   '',
@@ -265,6 +313,8 @@ async function postSimulation(
   points: TelemetryPoint[]
   optimalV: number | null
   remainingEnergyWh: number | null
+  forecastEnergyWh: number | null
+  forecastBatteryWh: number | null
 }> {
   let response: Response
 
@@ -299,6 +349,8 @@ async function postSimulation(
     points: data.points,
     optimalV: data.optimalV ?? null,
     remainingEnergyWh: data.remainingEnergyWh ?? null,
+    forecastEnergyWh: data.forecastEnergyWh ?? null,
+    forecastBatteryWh: data.forecastBatteryWh ?? null,
   }
 }
 
@@ -309,6 +361,9 @@ function App() {
 
   const [raceDayMin, setRaceDayMin] = useState<FieldDef>(() => createBlankField(initialRaceDayMin))
   const [batteryWh, setBatteryWh] = useState<FieldDef>(() => createBlankField(initialBatteryWh))
+  const [rolloverCoefficient, setRolloverCoefficient] = useState<FieldDef>(() =>
+    createBlankField(initialRolloverCoefficient),
+  )
   const [presets, setPresets] = useState<SimulationPreset[]>([])
   const [selectedPresetId, setSelectedPresetId] = useState('')
   const [presetStatus, setPresetStatus] = useState('Loading presets...')
@@ -320,7 +375,10 @@ function App() {
   const [result, setResult] = useState('--')
   const [rawDistanceM, setRawDistanceM] = useState<number | null>(null)
   const [remainingEnergyWh, setRemainingEnergyWh] = useState<number | null>(null)
+  const [forecastEnergyWh, setForecastEnergyWh] = useState<number | null>(null)
+  const [forecastBatteryWh, setForecastBatteryWh] = useState<number | null>(null)
   const [optimalSpeedMps, setOptimalSpeedMps] = useState<number | null>(null)
+  const [imperialUnits, setImperialUnits] = useState(false)
   const [graphsOpen, setGraphsOpen] = useState(false)
   const [status, setStatus] = useState('')
   const [trackStatus, setTrackStatus] = useState('Loading track...')
@@ -329,6 +387,8 @@ function App() {
   const [wraparoundEnabled, setWraparoundEnabled] = useState(true)
   const [hoverPoint, setHoverPoint] = useState<HoverPoint | null>(null)
   const lastSimulationInputsRef = useRef<Record<string, number> | null>(null)
+  const [cloudinessFactor, setCloudinessFactor] =
+    useState<(typeof cloudinessOptions)[number]['value']>(1.0)
 
   const [tooltip, setTooltip] = useState<TooltipState>({
     visible: false,
@@ -367,8 +427,10 @@ function App() {
         setBatteryWh(nextFormState.batteryWh)
         setRaceDayMin(nextFormState.raceDayMin)
         setAdditionalEfficiency(nextFormState.additionalEfficiency)
+        setRolloverCoefficient(nextFormState.rolloverCoefficient)
         setTelemetryAdditionalEfficiency(preset.inputs.additionalEfficiency)
         setPresetStatus('')
+        setCloudinessFactor(1.0)
       } catch (error) {
         console.error('Failed to load default presets', error)
         if (isMounted) setPresetStatus('Failed to load backend presets.')
@@ -441,6 +503,9 @@ function App() {
   const startMarkerColor = startPoint
     ? speedToColor(startPoint.speed)
     : rgbToCss(ABS_SPEED_COLOR_STOPS[0].color)
+  const displayDistanceUnit = distanceUnitLabel(imperialUnits)
+  const displaySpeedUnit = speedUnitLabel(imperialUnits)
+  const displayAccelUnit = accelUnitLabel(imperialUnits)
 
   useEffect(() => {
     let isMounted = true
@@ -456,6 +521,8 @@ function App() {
             setResult(lapLen > 0 ? (data.distanceM / lapLen).toFixed(2) : '--')
             setRawDistanceM(data.distanceM)
             setRemainingEnergyWh(data.remainingEnergyWh)
+            setForecastEnergyWh(data.forecastEnergyWh)
+            setForecastBatteryWh(data.forecastBatteryWh)
             setOptimalSpeedMps(data.optimalV)
             setTelemetry(data.points)
             setTelemetryAdditionalEfficiency(lastSimulationInputs.additionalEfficiency ?? 0)
@@ -507,6 +574,8 @@ function App() {
     setBatteryWh(nextFormState.batteryWh)
     setRaceDayMin(nextFormState.raceDayMin)
     setAdditionalEfficiency(nextFormState.additionalEfficiency)
+    setRolloverCoefficient(nextFormState.rolloverCoefficient)
+    setCloudinessFactor(1.0)
   }
 
   const handlePresetReset = () => {
@@ -518,6 +587,8 @@ function App() {
     setBatteryWh(nextFormState.batteryWh)
     setRaceDayMin(nextFormState.raceDayMin)
     setAdditionalEfficiency(nextFormState.additionalEfficiency)
+    setRolloverCoefficient(nextFormState.rolloverCoefficient)
+    setCloudinessFactor(1.0)
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -562,6 +633,19 @@ function App() {
     }
     payload[additionalEfficiency.name] = effValue
 
+    const rolloverValue = toNumber(rolloverCoefficient.value)
+    if (rolloverValue === null || rolloverValue < 0 || rolloverValue > 10) {
+      setStatus(`Invalid value for ${rolloverCoefficient.label}. Must be between 0.0 and 10.0.`)
+      return
+    }
+
+    if (payload.gmax === undefined) {
+      setStatus('Invalid value for gmax.')
+      return
+    }
+    payload.gmax *= rolloverValue
+    payload.cloudinessFactor = cloudinessFactor
+
     try {
       const data = await postSimulation(payload, wraparoundEnabled)
 
@@ -570,6 +654,8 @@ function App() {
       setResult(lapLen > 0 ? (data.distanceM / lapLen).toFixed(2) : '--')
       setRawDistanceM(data.distanceM)
       setRemainingEnergyWh(data.remainingEnergyWh)
+      setForecastEnergyWh(data.forecastEnergyWh)
+      setForecastBatteryWh(data.forecastBatteryWh)
       setOptimalSpeedMps(data.optimalV)
       setTelemetry(data.points)
       setTelemetryAdditionalEfficiency(effValue)
@@ -648,6 +734,14 @@ function App() {
           >
             Reset to preset
           </button>
+
+          <button
+            type="button"
+            className="toggle unit-toggle"
+            onClick={() => setImperialUnits((v) => !v)}
+          >
+            {imperialUnits ? 'Use metric' : 'Use imperial'}
+          </button>
         </div>
         {presetStatus ? <div className="status">{presetStatus}</div> : null}
 
@@ -691,6 +785,24 @@ function App() {
               }
             />
           </label>
+
+          <label>
+            Cloudiness
+            <select
+              value={cloudinessFactor}
+              onChange={(event) =>
+                setCloudinessFactor(
+                  Number(event.target.value) as (typeof cloudinessOptions)[number]['value'],
+                )
+              }
+            >
+              {cloudinessOptions.map((option) => (
+                <option key={option.label} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
 
         <form id="distance-form" onSubmit={handleSubmit}>
@@ -711,6 +823,20 @@ function App() {
                     />
                   </label>
                 ))}
+                <label>
+                  {rolloverCoefficient.label}
+                  <input
+                    type="number"
+                    step={rolloverCoefficient.step}
+                    min={rolloverCoefficient.min}
+                    max={rolloverCoefficient.max}
+                    name={rolloverCoefficient.name}
+                    value={rolloverCoefficient.value}
+                    onChange={(event) =>
+                      setRolloverCoefficient((prev) => ({ ...prev, value: event.target.value }))
+                    }
+                  />
+                </label>
               </div>
             </div>
           ) : null}
@@ -722,12 +848,37 @@ function App() {
             </div>
             {rawDistanceM !== null ? (
               <div className="result">
-                Distance: <strong>{rawDistanceM.toFixed(2)}</strong> m
+                Distance: <strong>{convertDistance(rawDistanceM, imperialUnits).toFixed(2)}</strong>{' '}
+                {displayDistanceUnit}
               </div>
             ) : null}
             {optimalSpeedMps !== null ? (
               <div className="result">
-                Optimal speed: <strong>{optimalSpeedMps.toFixed(2)}</strong> m/s
+                Optimal speed:{' '}
+                <strong>{convertSpeed(optimalSpeedMps, imperialUnits).toFixed(2)}</strong>{' '}
+                {displaySpeedUnit}
+                {remainingEnergyWh !== null ? (
+                  <span className="result-inline-note">
+                    {' '}
+                    · Leftover energy: <strong>{remainingEnergyWh.toFixed(1)}</strong> Wh
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+            {forecastEnergyWh !== null ? (
+              <div
+                className="result forecast-result"
+                title="Open-Meteo predicted energy added to the starting battery for the remaining race day"
+              >
+                <span className="forecast-icon" aria-hidden="true">
+                  ☀
+                </span>
+                Forecast gain: <strong>{forecastEnergyWh.toFixed(1)}</strong> Wh
+                {forecastBatteryWh !== null ? (
+                  <span className="forecast-detail">
+                    start battery {forecastBatteryWh.toFixed(1)} Wh
+                  </span>
+                ) : null}
               </div>
             ) : null}
             <div className="status">{status}</div>
@@ -759,7 +910,16 @@ function App() {
                 strokeLinecap="round"
                 pointerEvents="stroke"
                 onMouseMove={(e) =>
-                  handleSegmentMove(e, seg.speed, seg.accel, seg.distance, seg.x, seg.y, seg.color, seg.curveSpeedCap)
+                  handleSegmentMove(
+                    e,
+                    seg.speed,
+                    seg.accel,
+                    seg.distance,
+                    seg.x,
+                    seg.y,
+                    seg.color,
+                    seg.curveSpeedCap,
+                  )
                 }
                 onMouseLeave={handleSegmentLeave}
               />
@@ -818,25 +978,30 @@ function App() {
           />
           <div className="speed-legend-scale">
             {ABS_COLOR_TICKS.map((tick) => (
-              <span key={tick}>{tick.toFixed(0)} m/s</span>
+              <span key={tick}>
+                {convertSpeed(tick, imperialUnits).toFixed(0)} {displaySpeedUnit}
+              </span>
             ))}
           </div>
         </div>
 
         <div className="track-meta">
-          {trackStatus} · Speed range {speedRange[0].toFixed(2)}–{speedRange[1].toFixed(2)} m/s
+          {trackStatus} · Speed range {convertSpeed(speedRange[0], imperialUnits).toFixed(2)}–
+          {convertSpeed(speedRange[1], imperialUnits).toFixed(2)} {displaySpeedUnit}
         </div>
         {startPoint && endPoint ? (
           <div className="track-meta">
-            Start speed {startPoint.speed.toFixed(2)} m/s · End speed {endPoint.speed.toFixed(2)}{' '}
-            m/s
+            Start speed {convertSpeed(startPoint.speed, imperialUnits).toFixed(2)}{' '}
+            {displaySpeedUnit} · End speed {convertSpeed(endPoint.speed, imperialUnits).toFixed(2)}{' '}
+            {displaySpeedUnit}
           </div>
         ) : null}
         {rawDistanceM !== null || remainingEnergyWh !== null ? (
           <div className="track-meta">
             {rawDistanceM !== null ? (
               <span>
-                Distance: <strong>{rawDistanceM.toFixed(2)}</strong> m
+                Distance: <strong>{convertDistance(rawDistanceM, imperialUnits).toFixed(2)}</strong>{' '}
+                {displayDistanceUnit}
               </span>
             ) : null}
             {rawDistanceM !== null && remainingEnergyWh !== null ? ' · ' : null}
@@ -856,6 +1021,7 @@ function App() {
               <TelemetryGraph
                 telemetry={telemetry}
                 additionalEfficiency={telemetryAdditionalEfficiency}
+                imperialUnits={imperialUnits}
               />
             </div>
           ) : null}
@@ -867,12 +1033,20 @@ function App() {
         style={{ left: tooltip.x, top: tooltip.y }}
       >
         <div>
-          Speed: <strong>{tooltip.speed.toFixed(2)}</strong> m/s
+          Speed: <strong>{convertSpeed(tooltip.speed, imperialUnits).toFixed(2)}</strong>{' '}
+          {displaySpeedUnit}
         </div>
-        <div>Accel: {tooltip.accel.toFixed(3)} m/s²</div>
-        <div>Dist: {tooltip.distance.toFixed(1)} m</div>
+        <div>
+          Accel: {convertAccel(tooltip.accel, imperialUnits).toFixed(3)} {displayAccelUnit}
+        </div>
+        <div>
+          Dist: {convertDistance(tooltip.distance, imperialUnits).toFixed(1)} {displayDistanceUnit}
+        </div>
         {tooltip.curveSpeedCap > 0 ? (
-          <div>Curve max: {tooltip.curveSpeedCap.toFixed(2)} m/s</div>
+          <div>
+            Curve max: {convertSpeed(tooltip.curveSpeedCap, imperialUnits).toFixed(2)}{' '}
+            {displaySpeedUnit}
+          </div>
         ) : null}
       </div>
     </div>

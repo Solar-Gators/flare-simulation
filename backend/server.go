@@ -17,6 +17,7 @@ import (
 	"log"
 	"math"
 	"net/http" //lets go program talk over web --> Receive requests and send responses
+	"time"
 )
 
 type distanceRequest = simulationInputs
@@ -25,6 +26,8 @@ type distanceResponse struct {
 	DistanceM         float64 `json:"distanceM"`
 	OptimalV          float64 `json:"optimalV"`
 	RemainingEnergyWh float64 `json:"remainingEnergyWh"`
+	ForecastEnergyWh  float64 `json:"forecastEnergyWh"`
+	ForecastBatteryWh float64 `json:"forecastBatteryWh"`
 	OK                bool    `json:"ok"`
 	Message           string  `json:"message,omitempty"`
 }
@@ -38,6 +41,8 @@ type simulateResponse struct {
 	DistanceM         float64          `json:"distanceM"`
 	OptimalV          float64          `json:"optimalV"`
 	RemainingEnergyWh float64          `json:"remainingEnergyWh"`
+	ForecastEnergyWh  float64          `json:"forecastEnergyWh"`
+	ForecastBatteryWh float64          `json:"forecastBatteryWh"`
 	Points            []telemetryPoint `json:"points"`
 	OK                bool             `json:"ok"`
 	Message           string           `json:"message,omitempty"`
@@ -69,6 +74,17 @@ type telemetryResponse struct {
 }
 
 var optimalCruiseSpeed float64
+
+const (
+	openMeteoLatitude   = 46.41455
+	openMeteoLongitude  = -94.27193
+	openMeteoTiltDeg    = 5.0
+	openMeteoAzimuthDeg = 0.0
+	openMeteoTimezone   = "America/Chicago"
+	openMeteoPanelArea  = 5.98532
+	openMeteoPanelEff   = 0.22
+	openMeteoSystemEff  = 0.9
+)
 
 // relocated main bc this is new entry point
 // sim now becomes function
@@ -118,7 +134,6 @@ func distanceHandler(w http.ResponseWriter, r *http.Request) {
 
 	req := defaultSimulationInputs() // prefill with backend defaults, then let JSON override provided fields
 	dec := json.NewDecoder(r.Body)   //decode JSON and read
-	dec.DisallowUnknownFields()      //decoding will fail if JSON has fields that are not valid
 	if err := dec.Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, distanceResponse{OK: false, Message: "invalid JSON body"})
 		return
@@ -128,16 +143,16 @@ func distanceHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, distanceResponse{OK: false, Message: err.Error()})
 		return
 	}
-	//compute optimal cruise speed for these inputs
-	req.V = computeOptimalSpeedForInputs(req)
-	//run sim if everything is valid
-	distance, ok := distanceForInputs(req)
+
+	forecastInputs, forecastEnergyWh, forecastBatteryWh := inputsWithOpenMeteoForecast(req)
+	req.V = computeOptimalSpeedForInputs(forecastInputs)
+	distance, ok := distanceForInputs(forecastInputs)
 	if !ok {
 		writeJSON(w, http.StatusBadRequest, distanceResponse{OK: false, Message: "inputs are not feasible for the model"})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, distanceResponse{DistanceM: distance, OptimalV: req.V, RemainingEnergyWh: remainingEnergyForInputs(req), OK: true})
+	writeJSON(w, http.StatusOK, distanceResponse{DistanceM: distance, OptimalV: req.V, RemainingEnergyWh: remainingEnergyForInputs(forecastInputs), ForecastEnergyWh: forecastEnergyWh, ForecastBatteryWh: forecastBatteryWh, OK: true})
 }
 
 func simulateHandler(w http.ResponseWriter, r *http.Request) {
@@ -156,7 +171,6 @@ func simulateHandler(w http.ResponseWriter, r *http.Request) {
 		Wraparound: true,
 	}
 	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
 	if err := dec.Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, simulateResponse{OK: false, Message: "invalid JSON body"})
 		return
@@ -166,6 +180,9 @@ func simulateHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, simulateResponse{OK: false, Message: err.Error()})
 		return
 	}
+
+	forecastInputs, forecastEnergyWh, forecastBatteryWh := inputsWithOpenMeteoForecast(req.Inputs)
+	req.Inputs = forecastInputs
 
 	//compute optimal cruise speed for these inputs
 	req.Inputs.V = computeOptimalSpeedForInputs(req.Inputs)
@@ -182,13 +199,14 @@ func simulateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, simulateResponse{DistanceM: distance, OptimalV: req.Inputs.V, RemainingEnergyWh: remainingEnergyForInputs(req.Inputs), Points: points, OK: true})
+	writeJSON(w, http.StatusOK, simulateResponse{DistanceM: distance, OptimalV: req.Inputs.V, RemainingEnergyWh: remainingEnergyForInputs(req.Inputs), ForecastEnergyWh: forecastEnergyWh, ForecastBatteryWh: forecastBatteryWh, Points: points, OK: true})
 }
 
 func validateSimulationInputs(req simulationInputs) error {
 	if req.BatteryWh <= 0 || req.EtaDrive <= 0 || req.RaceDayMin <= 0 ||
 		req.RWheel <= 0 || req.Tmax <= 0 || req.Pmax <= 0 || req.M <= 0 || req.G <= 0 ||
 		req.Crr < 0 || req.Rho <= 0 || req.Cd <= 0 || req.A <= 0 || req.Gmax <= 0 ||
+		req.CloudinessFactor < 0 || req.CloudinessFactor > 1 ||
 		req.AdditionalEfficiency < -100 || req.AdditionalEfficiency > 100 {
 		return fmt.Errorf("missing or invalid input values")
 	}
@@ -202,6 +220,66 @@ func distanceForInputs(req simulationInputs) (float64, bool) {
 		req.RWheel, req.Tmax, req.Pmax,
 		req.M, req.G, req.Crr, req.Rho, req.Cd, req.A, req.Theta, req.AdditionalEfficiency,
 	)
+}
+
+func forecastDaysForInputs(inputs simulationInputs) int {
+	forecastDays := int(math.Ceil(inputs.RaceDayMin / (24.0 * 60.0)))
+	if forecastDays < 1 {
+		return 1
+	}
+	return forecastDays
+}
+
+func openMeteoForecastSpan(inputs simulationInputs) (*time.Time, *time.Time, error) {
+	loc, err := time.LoadLocation(openMeteoTimezone)
+	if err != nil {
+		return nil, nil, err
+	}
+	now := time.Now().In(loc)
+	spanStart := now
+	spanEnd := now.Add(time.Duration(inputs.RaceDayMin * float64(time.Minute)))
+	return &spanStart, &spanEnd, nil
+}
+
+func openMeteoForecastForInputs(inputs simulationInputs) (float64, float64, error) {
+	spanStart, spanEnd, err := openMeteoForecastSpan(inputs)
+	if err != nil {
+		return 0, inputs.BatteryWh, err
+	}
+
+	totalEnergyWh, fullBatteryWh, err := BuildEnergyWithBattery(
+		openMeteoLatitude,
+		openMeteoLongitude,
+		openMeteoTiltDeg,
+		openMeteoAzimuthDeg,
+		openMeteoTimezone,
+		forecastDaysForInputs(inputs),
+		openMeteoPanelArea,
+		openMeteoPanelEff,
+		openMeteoSystemEff,
+		time.Hour,
+		inputs.BatteryWh,
+		spanStart,
+		spanEnd,
+	)
+	if err != nil {
+		return 0, inputs.BatteryWh, err
+	}
+
+	totalEnergyWh *= inputs.CloudinessFactor
+	fullBatteryWh = inputs.BatteryWh + totalEnergyWh
+	return totalEnergyWh, fullBatteryWh, nil
+}
+
+func inputsWithOpenMeteoForecast(inputs simulationInputs) (simulationInputs, float64, float64) {
+	forecastEnergyWh, forecastBatteryWh, err := openMeteoForecastForInputs(inputs)
+	if err != nil {
+		return inputs, 0, inputs.BatteryWh
+	}
+
+	forecastInputs := inputs
+	forecastInputs.BatteryWh = forecastBatteryWh
+	return forecastInputs, forecastEnergyWh, forecastBatteryWh
 }
 
 func defaultsHandler(w http.ResponseWriter, r *http.Request) {
@@ -900,52 +978,69 @@ func remainingEnergyForInputs(inputs simulationInputs) float64 {
 
 // computeOptimalSpeedForInputs sweeps cruise speed from 2–40 m/s, then refines
 // ±2 m/s around the coarse best at 0.1 m/s resolution to find the speed that
-// maximises distance for the given energy budget and race time.
+// minimizes leftover energy for the given energy budget and race time.
 func computeOptimalSpeedForInputs(inputs simulationInputs) float64 {
-	bestV, bestD := 0.0, 0.0
+	bestV, bestDistance := 0.0, 0.0
+	bestLeftover := math.MaxFloat64
 	for v := 2.0; v <= 40.0; v += 0.5 {
+		candidate := inputs
+		candidate.V = v
 		if d, ok := DistanceForSpeedEV(
 			v,
-			inputs.BatteryWh,
-			inputs.SolarWhPerMin,
-			inputs.EtaDrive,
-			inputs.RaceDayMin,
-			inputs.RWheel,
-			inputs.Tmax,
-			inputs.Pmax,
-			inputs.M,
-			inputs.G,
-			inputs.Crr,
-			inputs.Rho,
-			inputs.Cd,
-			inputs.A,
-			inputs.Theta,
-			inputs.AdditionalEfficiency,
-		); ok && d > bestD {
-			bestD, bestV = d, v
+			candidate.BatteryWh,
+			candidate.SolarWhPerMin,
+			candidate.EtaDrive,
+			candidate.RaceDayMin,
+			candidate.RWheel,
+			candidate.Tmax,
+			candidate.Pmax,
+			candidate.M,
+			candidate.G,
+			candidate.Crr,
+			candidate.Rho,
+			candidate.Cd,
+			candidate.A,
+			candidate.Theta,
+			candidate.AdditionalEfficiency,
+		); ok {
+			leftover := remainingEnergyForInputs(candidate)
+			if math.Abs(leftover) < math.Abs(bestLeftover) ||
+				(math.Abs(leftover-bestLeftover) < 1e-9 && d > bestDistance) {
+				bestDistance = d
+				bestV = v
+				bestLeftover = leftover
+			}
 		}
 	}
 
 	for v := math.Max(0.5, bestV-2.0); v <= bestV+2.0; v += 0.1 {
+		candidate := inputs
+		candidate.V = v
 		if d, ok := DistanceForSpeedEV(
 			v,
-			inputs.BatteryWh,
-			inputs.SolarWhPerMin,
-			inputs.EtaDrive,
-			inputs.RaceDayMin,
-			inputs.RWheel,
-			inputs.Tmax,
-			inputs.Pmax,
-			inputs.M,
-			inputs.G,
-			inputs.Crr,
-			inputs.Rho,
-			inputs.Cd,
-			inputs.A,
-			inputs.Theta,
-			inputs.AdditionalEfficiency,
-		); ok && d > bestD {
-			bestD, bestV = d, v
+			candidate.BatteryWh,
+			candidate.SolarWhPerMin,
+			candidate.EtaDrive,
+			candidate.RaceDayMin,
+			candidate.RWheel,
+			candidate.Tmax,
+			candidate.Pmax,
+			candidate.M,
+			candidate.G,
+			candidate.Crr,
+			candidate.Rho,
+			candidate.Cd,
+			candidate.A,
+			candidate.Theta,
+			candidate.AdditionalEfficiency,
+		); ok {
+			leftover := remainingEnergyForInputs(candidate)
+			if math.Abs(leftover) < math.Abs(bestLeftover) ||
+				(math.Abs(leftover-bestLeftover) < 1e-9 && d > bestDistance) {
+				bestDistance = d
+				bestV = v
+				bestLeftover = leftover
+			}
 		}
 	}
 
