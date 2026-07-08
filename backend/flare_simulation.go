@@ -172,12 +172,12 @@ func runSimulation() {
 	spanEnd := time.Date(now.Year(), now.Month(), now.Day(), 17, 0, 0, 0, loc)
 
 	totalEnergyGained, fullBatt, err := BuildEnergyWithBattery(
-		29.6516, -82.3248, // lat, lon
+		46.41455, -94.27193, // lat, lon
 		5.0, 0.0, // tilt, azimuth
-		"America/New_York", // timezone
+		"America/Chicago", // timezone
 		1.0,                // forecastDays (1 day is enough for 8 hours)
 
-		4.0,  // panelArea (m²)
+		5.98532,  // panelArea (m²)
 		0.22, // panelEff
 		0.9,  // systemEff
 

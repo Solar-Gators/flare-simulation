@@ -4,6 +4,7 @@ import {
   Line,
   XAxis,
   YAxis,
+  Label,
   Tooltip as ReTooltip,
   CartesianGrid,
   ResponsiveContainer,
@@ -20,6 +21,7 @@ type TPoint = {
 type Props = {
   telemetry: TPoint[]
   additionalEfficiency: number
+  imperialUnits: boolean
 }
 
 type ChartPoint = {
@@ -28,6 +30,10 @@ type ChartPoint = {
   accel: number
   energy: number
 }
+
+const METERS_PER_MILE = 1609.344
+const MPS_TO_MPH = 2.2369362920544
+const MPS2_TO_FTPS2 = 3.280839895013123
 
 function powerRequired(v: number, additionalEfficiency: number) {
   const m = 285.0
@@ -48,11 +54,19 @@ function energyWhPerMeter(v: number, additionalEfficiency: number) {
   return P / (v * 3600)
 }
 
-function binTelemetry(
-  points: TPoint[],
-  additionalEfficiency: number,
-  binSize = 100,
-): ChartPoint[] {
+function metersPerSecondToMph(value: number) {
+  return value * MPS_TO_MPH
+}
+
+function metersPerSecondSquaredToFeetPerSecondSquared(value: number) {
+  return value * MPS2_TO_FTPS2
+}
+
+function energyWhPerMeterToWhPerMile(value: number) {
+  return value * METERS_PER_MILE
+}
+
+function binTelemetry(points: TPoint[], additionalEfficiency: number, binSize = 100): ChartPoint[] {
   if (points.length === 0) return []
   const bins = new Map<
     number,
@@ -92,12 +106,19 @@ function binTelemetry(
   return out
 }
 
-export default function TelemetryGraph({ telemetry, additionalEfficiency }: Props) {
+export default function TelemetryGraph({ telemetry, additionalEfficiency, imperialUnits }: Props) {
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [showAll, setShowAll] = useState(true)
   const [normalize100, setNormalize100] = useState(false)
 
-  const options = useMemo(() => telemetry.map((p, i) => ({ i, label: `${i}: ${p.distance.toFixed(1)} m` })), [telemetry])
+  const options = useMemo(
+    () =>
+      telemetry.map((p, i) => ({
+        i,
+        label: `${i}: ${imperialUnits ? (p.distance / METERS_PER_MILE).toFixed(2) : p.distance.toFixed(1)} ${imperialUnits ? 'mi' : 'm'}`,
+      })),
+    [telemetry, imperialUnits],
+  )
   const tooltipProps = useMemo(
     () => ({
       shared: true,
@@ -120,13 +141,32 @@ export default function TelemetryGraph({ telemetry, additionalEfficiency }: Prop
       base = telemetry.slice(start, end)
     }
 
-    if (normalize100) {
-      return binTelemetry(base, additionalEfficiency, 100)
+    const points = normalize100
+      ? binTelemetry(base, additionalEfficiency, 100)
+      : base.map((p) => ({
+          distance: p.distance,
+          speed: p.speed,
+          accel: p.accel,
+          energy: energyWhPerMeter(p.speed, additionalEfficiency),
+        }))
+
+    if (!imperialUnits) {
+      return points
     }
 
-    // map to ChartPoint with per-point energy
-    return base.map((p) => ({ distance: p.distance, speed: p.speed, accel: p.accel, energy: energyWhPerMeter(p.speed, additionalEfficiency) }))
-  }, [telemetry, selectedIndex, showAll, normalize100, additionalEfficiency])
+    return points.map((point) => ({
+      distance: point.distance / METERS_PER_MILE,
+      speed: metersPerSecondToMph(point.speed),
+      accel: metersPerSecondSquaredToFeetPerSecondSquared(point.accel),
+      energy: energyWhPerMeterToWhPerMile(point.energy),
+    }))
+  }, [telemetry, selectedIndex, showAll, normalize100, additionalEfficiency, imperialUnits])
+
+  const distanceUnitLabel = imperialUnits ? 'mi' : 'm'
+  const speedUnitLabel = imperialUnits ? 'mph' : 'm/s'
+  const accelUnitLabel = imperialUnits ? 'ft/s²' : 'm/s²'
+  const energyUnitLabel = imperialUnits ? 'Wh/mi' : 'Wh/m'
+  const binLabel = imperialUnits ? 'Bin by 0.06 mi' : 'Bin by 100 m'
 
   return (
     <div style={{ fontFamily: 'system-ui, Arial' }}>
@@ -149,9 +189,11 @@ export default function TelemetryGraph({ telemetry, additionalEfficiency }: Prop
             checked={normalize100}
             onChange={(e) => setNormalize100(e.target.checked)}
           />
-          Bin by 100 m
+          {binLabel}
         </label>
-        <div style={{ marginLeft: 'auto', fontSize: 13, color: '#666' }}>{telemetry.length} points</div>
+        <div style={{ marginLeft: 'auto', fontSize: 13, color: '#666' }}>
+          {telemetry.length} points
+        </div>
       </div>
 
       <div style={{ display: 'grid', gap: 12 }}>
@@ -159,10 +201,32 @@ export default function TelemetryGraph({ telemetry, additionalEfficiency }: Prop
           <ResponsiveContainer>
             <LineChart data={windowPoints}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="distance" tickFormatter={(d: number | string) => `${Math.round(Number(d))}m`} />
-              <YAxis />
+              <XAxis
+                dataKey="distance"
+                tickFormatter={(d: number | string) =>
+                  imperialUnits
+                    ? `${Number(d).toFixed(2)}${distanceUnitLabel}`
+                    : `${Math.round(Number(d))}${distanceUnitLabel}`
+                }
+              >
+                <Label
+                  value={`Distance (${distanceUnitLabel})`}
+                  position="insideBottom"
+                  offset={-2}
+                />
+              </XAxis>
+              <YAxis>
+                <Label value={`Speed (${speedUnitLabel})`} angle={-90} position="insideLeft" />
+              </YAxis>
               <ReTooltip {...tooltipProps} />
-              <Line type="monotone" dataKey="speed" stroke="#007acc" dot={false} strokeWidth={2} activeDot={{ r: 5 }} />
+              <Line
+                type="monotone"
+                dataKey="speed"
+                stroke="#007acc"
+                dot={false}
+                strokeWidth={2}
+                activeDot={{ r: 5 }}
+              />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -171,10 +235,36 @@ export default function TelemetryGraph({ telemetry, additionalEfficiency }: Prop
           <ResponsiveContainer>
             <LineChart data={windowPoints}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="distance" tickFormatter={(d: number | string) => `${Math.round(Number(d))}m`} />
-              <YAxis />
+              <XAxis
+                dataKey="distance"
+                tickFormatter={(d: number | string) =>
+                  imperialUnits
+                    ? `${Number(d).toFixed(2)}${distanceUnitLabel}`
+                    : `${Math.round(Number(d))}${distanceUnitLabel}`
+                }
+              >
+                <Label
+                  value={`Distance (${distanceUnitLabel})`}
+                  position="insideBottom"
+                  offset={-2}
+                />
+              </XAxis>
+              <YAxis>
+                <Label
+                  value={`Acceleration (${accelUnitLabel})`}
+                  angle={-90}
+                  position="insideLeft"
+                />
+              </YAxis>
               <ReTooltip {...tooltipProps} />
-              <Line type="monotone" dataKey="accel" stroke="#e55353" dot={false} strokeWidth={2} activeDot={{ r: 5 }} />
+              <Line
+                type="monotone"
+                dataKey="accel"
+                stroke="#e55353"
+                dot={false}
+                strokeWidth={2}
+                activeDot={{ r: 5 }}
+              />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -183,10 +273,32 @@ export default function TelemetryGraph({ telemetry, additionalEfficiency }: Prop
           <ResponsiveContainer>
             <LineChart data={windowPoints}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="distance" tickFormatter={(d: number | string) => `${Math.round(Number(d))}m`} />
-              <YAxis />
+              <XAxis
+                dataKey="distance"
+                tickFormatter={(d: number | string) =>
+                  imperialUnits
+                    ? `${Number(d).toFixed(2)}${distanceUnitLabel}`
+                    : `${Math.round(Number(d))}${distanceUnitLabel}`
+                }
+              >
+                <Label
+                  value={`Distance (${distanceUnitLabel})`}
+                  position="insideBottom"
+                  offset={-2}
+                />
+              </XAxis>
+              <YAxis>
+                <Label value={`Energy (${energyUnitLabel})`} angle={-90} position="insideLeft" />
+              </YAxis>
               <ReTooltip {...tooltipProps} />
-              <Line type="monotone" dataKey="energy" stroke="#22aa55" dot={false} strokeWidth={2} activeDot={{ r: 5 }} />
+              <Line
+                type="monotone"
+                dataKey="energy"
+                stroke="#22aa55"
+                dot={false}
+                strokeWidth={2}
+                activeDot={{ r: 5 }}
+              />
             </LineChart>
           </ResponsiveContainer>
         </div>

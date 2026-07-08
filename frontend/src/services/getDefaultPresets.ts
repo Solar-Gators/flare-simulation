@@ -1,6 +1,7 @@
 export type SimulationInputs = {
   batteryWh: number
   solarWhPerMin: number
+  cloudinessFactor: number
   etaDrive: number
   raceDayMin: number
   rWheel: number

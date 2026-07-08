@@ -42,7 +42,7 @@ func TestSimulateHandlerReturnsDistanceAndTelemetry(t *testing.T) {
 	}
 }
 
-func TestDistanceForInputsUsesAdditionalEfficiency(t *testing.T) {
+func TestComputeOptimalSpeedMinimizesLeftoverEnergy(t *testing.T) {
 	base := defaultSimulationInputs()
 	base.BatteryWh = 100
 	base.AdditionalEfficiency = 0
@@ -52,20 +52,14 @@ func TestDistanceForInputsUsesAdditionalEfficiency(t *testing.T) {
 	penalized.AdditionalEfficiency = 10
 	penalized.V = computeOptimalSpeedForInputs(penalized)
 
-	baseDistance, ok := distanceForInputs(base)
-	if !ok {
-		t.Fatal("expected base distance calculation to be feasible")
-	}
-	penalizedDistance, ok := distanceForInputs(penalized)
-	if !ok {
-		t.Fatal("expected penalized distance calculation to be feasible")
-	}
+	baseLeftover := remainingEnergyForInputs(base)
+	penalizedLeftover := remainingEnergyForInputs(penalized)
 
-	if penalizedDistance >= baseDistance {
+	if penalizedLeftover > baseLeftover {
 		t.Fatalf(
-			"got penalized distance %.6f, want less than base distance %.6f",
-			penalizedDistance,
-			baseDistance,
+			"got penalized leftover %.6f, want less than or equal to base leftover %.6f",
+			penalizedLeftover,
+			baseLeftover,
 		)
 	}
 }

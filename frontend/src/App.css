@@ -121,6 +121,32 @@ button:hover {
   font-weight: 600;
 }
 
+.forecast-result {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  color: var(--muted);
+}
+
+.forecast-icon {
+  width: 22px;
+  height: 22px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(255, 184, 0, 0.16);
+  color: #a85c00;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.forecast-detail {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+
 .status {
   color: var(--muted);
   font-size: 14px;
